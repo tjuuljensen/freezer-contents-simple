@@ -25,13 +25,15 @@ A storage-backed Home Assistant integration and dashboard card for tracking free
 - Configurable date display styles
 - Shortcut buttons for common items
 - Confirmation prompt before clearing the full inventory
+- Configurable suggestions for item, packaging, compartment, and expiry inputs
 
-## Installation
+## Installation with HACS
 
-1. Copy `custom_components/freezer_management` into your Home Assistant config directory.
-2. Restart Home Assistant.
-3. Go to **Settings → Devices & services** and add **Freezer Management**.
-4. Add the dashboard resource:
+1. Add this repository to HACS as a **Custom repository** with category **Integration**.
+2. Install **Freezer Management** from HACS.
+3. Restart Home Assistant.
+4. Go to **Settings → Devices & services** and add **Freezer Management**.
+5. Add the dashboard resource:
 
 ```yaml
 resources:
@@ -39,7 +41,7 @@ resources:
     type: module
 ```
 
-5. Add the card to a dashboard.
+6. Add the card to a dashboard.
 
 ## Card example
 
@@ -59,6 +61,21 @@ show_shortcuts: true
 shortcuts:
   - black beans
   - rye bread
+item_shortcuts:
+  - black beans
+  - rye bread
+packaging_shortcuts:
+  - bag
+  - box
+compartment_shortcuts:
+  - 1
+  - 2
+  - 3
+expiry_shortcuts:
+  - 90d
+  - 6m
+  - 1y
+  - 2026-12-31
 ```
 
 ## Expiry date input
@@ -143,40 +160,3 @@ If you need a completely fresh store, remove the config entry and add it again.
 
 Original concept inspiration came from the community freezer card idea shared by Ronald Dehuysser (`rdehuyss`):
 https://community.home-assistant.io/t/custom-card-freezer-management/530416
-
-
-## 1.1.5 changes
-
-- The add form now gives more width to **Item**, a bit more width to **Packaging**, and less width to **Compartment**.
-- Added configurable suggestions for all input fields:
-  - `item_shortcuts`
-  - `packaging_shortcuts`
-  - `compartment_shortcuts`
-  - `expiry_shortcuts`
-- Item suggestions can still be shown as shortcut buttons when `show_shortcuts: true`.
-
-### Example
-
-```yaml
-type: custom:freezer-management-card
-entity: sensor.main_freezer_inventory
-item_shortcuts:
-  - black beans
-  - rye bread
-packaging_shortcuts:
-  - bag
-  - box
-  - red container
-compartment_shortcuts:
-  - 1
-  - 2
-  - 3
-  - top
-  - middle
-  - bottom
-expiry_shortcuts:
-  - 90d
-  - 6m
-  - 1y
-  - 2026-12-31
-```
