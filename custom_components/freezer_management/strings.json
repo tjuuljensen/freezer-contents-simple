@@ -1,0 +1,55 @@
+{
+  "title": "Freezer Management",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add freezer inventory",
+        "description": "Create a storage-backed freezer inventory that the custom card can use directly.",
+        "data": {
+          "title": "Name"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "inventory": {
+        "name": "Inventory"
+      }
+    }
+  },
+  "services": {
+    "add_item": {
+      "name": "Add item",
+      "description": "Add an item to the freezer inventory.",
+      "fields": {
+        "contents": {
+          "name": "Contents",
+          "description": "The saved item name."
+        },
+        "compartment": {
+          "name": "Compartment",
+          "description": "The freezer compartment or drawer."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Optional display date stored with the item."
+        }
+      }
+    },
+    "remove_item": {
+      "name": "Remove item",
+      "description": "Remove an item from the freezer inventory.",
+      "fields": {
+        "item_id": {
+          "name": "Item ID",
+          "description": "The internal item ID to remove."
+        }
+      }
+    },
+    "clear_inventory": {
+      "name": "Clear inventory",
+      "description": "Remove all items from the freezer inventory."
+    }
+  }
+}

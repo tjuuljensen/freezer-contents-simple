@@ -1,0 +1,7 @@
+{
+  "services": {
+    "add_item": "mdi:plus-box",
+    "remove_item": "mdi:delete-outline",
+    "clear_inventory": "mdi:broom"
+  }
+}

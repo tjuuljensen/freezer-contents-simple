@@ -3,36 +3,25 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
-  workflow_dispatch:
+      - "v*.*.*"
 
 permissions:
   contents: write
 
 jobs:
-  validate-hacs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: HACS validation
-        uses: hacs/action@main
-        with:
-          category: plugin
-
   release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: validate-hacs
+    name: Build release
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify distribution files
+      - name: Create release archive
         run: |
-          test -f dist/freezer-management-card.js
-          test -f dist/freezer-management-resources.js
-          test -f hacs.json
+          zip -r freezer-management-card.zip .             -x ".git/*"             -x ".github/*"             -x "__pycache__/*"             -x "*.pyc"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          files: freezer-management-card.zip
           generate_release_notes: true

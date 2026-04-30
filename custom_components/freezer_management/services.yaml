@@ -1,0 +1,33 @@
+add_item:
+  target:
+    entity:
+      integration: freezer_management
+      domain: sensor
+  fields:
+    contents:
+      required: true
+      selector:
+        text:
+    compartment:
+      selector:
+        text:
+    date:
+      selector:
+        text:
+
+remove_item:
+  target:
+    entity:
+      integration: freezer_management
+      domain: sensor
+  fields:
+    item_id:
+      required: true
+      selector:
+        text:
+
+clear_inventory:
+  target:
+    entity:
+      integration: freezer_management
+      domain: sensor

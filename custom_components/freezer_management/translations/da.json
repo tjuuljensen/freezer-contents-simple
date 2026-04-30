@@ -1,0 +1,55 @@
+{
+  "title": "Fryserstyring",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tilføj fryserlager",
+        "description": "Opret et lager med Home Assistant-storage, som det tilpassede kort kan bruge direkte.",
+        "data": {
+          "title": "Navn"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "inventory": {
+        "name": "Lager"
+      }
+    }
+  },
+  "services": {
+    "add_item": {
+      "name": "Tilføj vare",
+      "description": "Tilføj en vare til fryserlageret.",
+      "fields": {
+        "contents": {
+          "name": "Indhold",
+          "description": "Navnet på den gemte vare."
+        },
+        "compartment": {
+          "name": "Rum",
+          "description": "Fryserum eller skuffe."
+        },
+        "date": {
+          "name": "Dato",
+          "description": "Valgfri visningsdato, som gemmes med varen."
+        }
+      }
+    },
+    "remove_item": {
+      "name": "Fjern vare",
+      "description": "Fjern en vare fra fryserlageret.",
+      "fields": {
+        "item_id": {
+          "name": "Vare-id",
+          "description": "Det interne vare-id, der skal fjernes."
+        }
+      }
+    },
+    "clear_inventory": {
+      "name": "Ryd lager",
+      "description": "Fjern alle varer fra fryserlageret."
+    }
+  }
+}
