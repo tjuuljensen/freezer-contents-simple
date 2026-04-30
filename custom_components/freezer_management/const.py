@@ -24,3 +24,5 @@ DEFAULT_TITLE = "Freezer"
 INVENTORY_ENTITY_NAME = "Inventory"
 
 STATIC_URL_PATH = f"/api/{DOMAIN}/static"
+
+DATA_ENTRIES = "entries"

@@ -1,48 +1,27 @@
-# Freezer Management
+# Freezer Management Card
 
-![Freezer Management logo](custom_components/freezer_management/brand/logo.png)
+A simplified custom Home Assistant card for tracking freezer contents with **compartment-only grouping**.
 
-A storage-backed Home Assistant companion integration plus custom dashboard card for tracking freezer contents with **compartment-only grouping**.
+## Credit
 
-This version removes the old file + notify + read-sensor chain completely. The inventory is now stored with Home Assistant's storage helper, exposed as a native sensor entity, and managed through integration services. The card reads that entity directly and writes changes through the integration.
+This project is based on the original **Freezer Management** card by **Ronald Dehuysser** (`rdehuyss`), first shared on the Home Assistant Community forum and published on GitHub. This rewrite keeps the core idea while removing the original multi-step overlay and the old container/pot layer entirely.
 
-## What changed in this generation
+## What this version changes
 
-- Replaces file-backed JSON persistence with a companion custom integration.
-- Removes the old `pot` layer from the UI and write model.
-- Keeps the card focused on **contents + compartment + date**.
-- Adds a Home Assistant **config flow** so the backend is created from the UI.
-- Adds storage-backed services:
-  - `freezer_management.add_item`
-  - `freezer_management.remove_item`
-  - `freezer_management.clear_inventory`
-- Exposes one inventory sensor per config entry.
-- Serves the custom card from the integration itself through a static URL.
-- Keeps configurable table headers and the graphical card editor.
+- Removes the original add overlay and uses a single inline form.
+- Removes the old `pot` / container number layer from the UI and the new write model.
+- Uses the modern `notify.send_message` action pattern against a `notify` entity instead of calling legacy-style notify services directly.
+- Adds configurable table headers for contents, compartment, and date.
+- Adds `getConfigElement()` and `getStubConfig()` so the card can be configured in the dashboard editor.
+- Ships as a HACS-ready Dashboard/plugin repository with a release workflow and HACS validation workflow.
 
 ## Repository layout
 
 ```text
 freezer-management-card/
-  custom_components/
-    freezer_management/
-      __init__.py
-      config_flow.py
-      const.py
-      diagnostics.py
-      frontend/
-        freezer-management-card.js
-        freezer-management-resources.js
-      brand/
-        icon.png
-        logo.png
-      manifest.json
-      sensor.py
-      services.yaml
-      storage.py
-      strings.json
-      translations/
-        da.json
+  dist/
+    freezer-management-card.js
+    freezer-management-resources.js
   .github/
     workflows/
       release.yml
@@ -57,39 +36,31 @@ freezer-management-card/
 
 ### HACS
 
-1. Add this repository as an **Integration** custom repository in HACS.
-2. Install **Freezer Management**.
-3. Restart Home Assistant.
-4. Go to **Settings → Devices & services → Add integration**.
-5. Add **Freezer Management** and give the inventory a name, for example `Main Freezer`.
+1. Add this repository as a **Dashboard** custom repository in HACS.
+2. Install **Freezer Management Card**.
+3. Refresh your browser cache.
+4. Add the card as `type: custom:freezer-management-card`.
 
-### Dashboard resource
+### Manual installation
 
-After the integration is installed, add the card resource once:
+1. Copy the two files from `dist/` into your Home Assistant `www/` folder.
+2. Add the resource:
 
 ```yaml
 resources:
-  - url: /api/freezer_management/static/freezer-management-card.js
+  - url: /local/freezer-management-card.js
     type: module
 ```
 
-You can add that in the dashboard resources UI or YAML mode.
-
 ## Card configuration
 
-### Minimal example
-
-```yaml
-type: custom:freezer-management-card
-entity: sensor.main_freezer_inventory
-```
-
-### Full example
+### YAML example
 
 ```yaml
 type: custom:freezer-management-card
 title: Fryser
-entity: sensor.main_freezer_inventory
+contents_notify: notify.freezer_contents
+contents_sensor: sensor.freezer_contents
 sort_by: compartment
 contents_header: Indhold
 compartment_header: Rum
@@ -105,8 +76,9 @@ shortcuts:
 
 | Option | Required | Description |
 |---|---:|---|
-| `entity` | Yes | The inventory sensor created by the integration, for example `sensor.main_freezer_inventory`. |
-| `title` | No | Card title override. If omitted, the entity friendly name is used. |
+| `contents_notify` | Yes | The `notify` entity used for persistence, for example `notify.freezer_contents`. |
+| `contents_sensor` | Yes | The sensor that exposes the JSON payload through its `items` attribute. |
+| `title` | No | Card title. |
 | `sort_by` | No | `compartment`, `newest`, `oldest`, or `contents`. Defaults to `compartment`. |
 | `contents_header` | No | Override the first table header. |
 | `compartment_header` | No | Override the second table header. |
@@ -114,103 +86,96 @@ shortcuts:
 | `show_shortcuts` | No | Show or hide shortcut buttons. Defaults to `true`. |
 | `shortcuts` | No | List of preset contents values. |
 
-## Backend behavior
+## Backend setup
 
-Each config entry creates one storage-backed inventory sensor.
+This card still uses a lightweight file-backed pattern, but it is updated for Home Assistant's modern notify model:
 
-Example entity:
+- Create a **File** integration entry in **Settings → Devices & services**.
+- Add a **notification** target that writes to `/config/freezer-contents.json`.
+- Use the resulting notify entity as `contents_notify`.
+- Add `/config` or a narrower directory to `allowlist_external_dirs`.
+- Keep a sensor that reads the last line of that JSON file so the card can load the inventory.
 
-```text
-sensor.main_freezer_inventory
+### Example backend YAML
+
+```yaml
+homeassistant:
+  allowlist_external_dirs:
+    - /config
+
+sensor:
+  - platform: command_line
+    name: freezer_contents
+    json_attributes:
+      - count
+      - items
+    command: "tail -1 /config/freezer-contents.json"
+    value_template: "{{ value_json.count }}"
 ```
 
-State:
-- item count
+### Example service test
 
-Attributes:
-- `items`
-- `updated_at`
+This is the modern notify pattern the card now uses internally:
 
-Example `items` payload:
+```yaml
+action: notify.send_message
+data:
+  entity_id: notify.freezer_contents
+  message: '{"count":0,"items":[]}'
+```
+
+## Notes about the data model
+
+New writes use this simplified item shape:
 
 ```json
-[
-  {
-    "id": "d1f9a3d5dca0472ba6efb8cb5cb76f0e",
-    "contents": "Bolognese",
-    "compartment": "2",
-    "date": "2026-04-30",
-    "iso_date": "2026-04-30T18:45:11.000000+00:00"
-  }
-]
+{
+  "count": 2,
+  "items": [
+    {
+      "contents": "Bolognese",
+      "compartment": "2",
+      "date": "30 Apr 2026",
+      "iso_date": "2026-04-30T12:34:56.000Z"
+    }
+  ]
+}
 ```
 
-## Available services
+The card still reads older `potContents` / `potCompartment` data if it finds it, but all new saves use the simplified model.
 
-### Add item
+## Dashboard editor support
 
-```yaml
-action: freezer_management.add_item
-target:
-  entity_id: sensor.main_freezer_inventory
-data:
-  contents: Bolognese
-  compartment: "2"
-```
+The card now exposes a graphical editor through `getConfigElement()` and a starter configuration through `getStubConfig()`.
 
-### Remove item
+## Release and validation workflows
 
-```yaml
-action: freezer_management.remove_item
-target:
-  entity_id: sensor.main_freezer_inventory
-data:
-  item_id: d1f9a3d5dca0472ba6efb8cb5cb76f0e
-```
-
-### Clear inventory
-
-```yaml
-action: freezer_management.clear_inventory
-target:
-  entity_id: sensor.main_freezer_inventory
-```
-
-## GitHub / HACS publishing notes
-
-HACS validation also checks GitHub repository metadata, not only the files in this repository.
-
-### Required GitHub repository topics
-
-Set repository topics in GitHub to something like:
-
-- `home-assistant`
-- `home-assistant-integration`
-- `hacs`
-- `freezer-management`
-- `lovelace`
-
-### Required README image
-
-This README includes the logo image above so the HACS README image check can pass.
-
-### Recommended repository settings
-
-- Add a short GitHub repository description.
-- Keep Issues enabled.
-- Publish real GitHub releases, not only tags.
+- `.github/workflows/validate.yml` runs the HACS validator using the `plugin` category.
+- `.github/workflows/release.yml` creates a GitHub release when you push a version tag like `v0.4.0`.
 
 ## Future improvements
 
-- Add edit-in-place support for existing items.
-- Add expiry-date and age highlighting.
-- Add optional barcode-assisted entry.
-- Add an area/device style dashboard view for multiple freezer inventories.
-- Split the frontend card into a standalone plugin repo if you want completely separate HACS install flows for backend and card.
-- Add diagnostics export and repair flows.
-- Replace the plain sensor-with-attributes model with richer entity/service patterns if you later want analytics and history views.
+### Architecture
 
-## Credits
+- Replace the file + sensor persistence chain with a tiny custom integration that stores data with Home Assistant storage helpers instead of serializing JSON through a notify entity.
+- Expose services like `freezer_management.add_item`, `freezer_management.remove_item`, and a storage-backed summary entity.
+- Add diagnostics or a health sensor so the UI can show stale or unreadable storage cleanly.
 
-- Original concept and card by Ronald Dehuysser (`rdehuyss`): https://community.home-assistant.io/t/custom-card-freezer-management/530416
-- This rewritten version restructures the project into a storage-backed Home Assistant companion integration with a simplified card.
+### Frontend
+
+- Rewrite the card in Lit + TypeScript for better rendering, state handling, and editor maintainability.
+- Add filter/search controls and optional compartment grouping.
+- Add import/export actions for freezer inventories.
+- Add optimistic updates with rollback when persistence fails.
+- Add optional quantity, tags, or expiry metadata as a deliberate second-generation schema instead of reintroducing the old container layer.
+
+## Development notes
+
+- The card disables edits while the backing sensor is unavailable to avoid overwriting unknown state.
+- `dist/freezer-management-card.js` is the file HACS should serve.
+- `hacs.json` is configured for a Dashboard/plugin repository.
+
+
+## Troubleshooting note
+
+If you saw `async_register_platform_entity_service() takes 3 positional arguments but 6 were given`, update to version 1.0.2 or later. That issue was caused by using an outdated positional-call pattern against the current Home Assistant entity service registration API.

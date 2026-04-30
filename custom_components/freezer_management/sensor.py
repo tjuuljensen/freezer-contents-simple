@@ -17,6 +17,7 @@ from .const import (
     ATTR_ITEM_ID,
     ATTR_ITEMS,
     ATTR_UPDATED_AT,
+    DATA_ENTRIES,
     DOMAIN,
     INVENTORY_ENTITY_NAME,
 )
@@ -46,7 +47,7 @@ class FreezerInventorySensor(SensorEntity):
     def __init__(self, entry: FreezerManagementConfigEntry) -> None:
         """Initialize the sensor."""
         self._entry = entry
-        self._store = entry.runtime_data
+        self._store = entry.hass.data[DOMAIN][DATA_ENTRIES][entry.entry_id]
         self._attr_unique_id = f"{entry.entry_id}_inventory"
 
     @property

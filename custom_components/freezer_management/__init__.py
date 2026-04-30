@@ -18,6 +18,7 @@ from .const import (
     ATTR_CONTENTS,
     ATTR_DATE,
     ATTR_ITEM_ID,
+    DATA_ENTRIES,
     DOMAIN,
     PLATFORMS,
     SERVICE_ADD_ITEM,
@@ -55,31 +56,31 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             hass,
             DOMAIN,
             SERVICE_ADD_ITEM,
-            SENSOR_DOMAIN,
-            {
+            entity_domain=SENSOR_DOMAIN,
+            schema={
                 vol.Required(ATTR_CONTENTS): cv.string,
                 vol.Optional(ATTR_COMPARTMENT, default=""): cv.string,
                 vol.Optional(ATTR_DATE): cv.string,
             },
-            "async_add_item",
+            func="async_add_item",
         )
         service.async_register_platform_entity_service(
             hass,
             DOMAIN,
             SERVICE_REMOVE_ITEM,
-            SENSOR_DOMAIN,
-            {
+            entity_domain=SENSOR_DOMAIN,
+            schema={
                 vol.Required(ATTR_ITEM_ID): cv.string,
             },
-            "async_remove_item",
+            func="async_remove_item",
         )
         service.async_register_platform_entity_service(
             hass,
             DOMAIN,
             SERVICE_CLEAR_INVENTORY,
-            SENSOR_DOMAIN,
-            vol.Schema({}),
-            "async_clear_inventory",
+            entity_domain=SENSOR_DOMAIN,
+            schema=vol.Schema({}),
+            func="async_clear_inventory",
         )
         domain_data[_DATA_SERVICES_REGISTERED] = True
 
@@ -93,7 +94,8 @@ async def async_setup_entry(
     """Set up Freezer Management from a config entry."""
     store = FreezerInventoryStore(hass, entry.entry_id)
     await store.async_load()
-    entry.runtime_data = store
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    domain_data.setdefault(DATA_ENTRIES, {})[entry.entry_id] = store
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -103,4 +105,9 @@ async def async_unload_entry(
     entry: FreezerManagementConfigEntry,
 ) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        domain_data = hass.data.get(DOMAIN, {})
+        entries = domain_data.get(DATA_ENTRIES, {})
+        entries.pop(entry.entry_id, None)
+    return unloaded
