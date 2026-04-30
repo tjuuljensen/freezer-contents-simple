@@ -16,7 +16,10 @@ add_item:
     freezerCompartment:
       selector:
         text:
-    storageDate:
+    addedDate:
+      selector:
+        text:
+    expiryDate:
       selector:
         text:
 

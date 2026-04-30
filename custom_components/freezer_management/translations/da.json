@@ -35,8 +35,11 @@
         "freezerCompartment": {
           "name": "Fryserum"
         },
-        "storageDate": {
-          "name": "Opbevaringsdato"
+        "addedDate": {
+          "name": "Tilføjet dato"
+        },
+        "expiryDate": {
+          "name": "Udløbsdato"
         }
       }
     },

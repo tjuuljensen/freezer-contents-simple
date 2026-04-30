@@ -7,15 +7,17 @@ PLATFORMS = ["sensor"]
 
 DATA_ENTRIES = "entries"
 
-STORAGE_VERSION = 2
+STORAGE_VERSION = 3
 STORAGE_KEY_PREFIX = f"{DOMAIN}.inventory"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 ATTR_ITEM = "item"
 ATTR_PACKAGING_TYPE = "packagingType"
 ATTR_FREEZER_COMPARTMENT = "freezerCompartment"
-ATTR_STORAGE_DATE = "storageDate"
-ATTR_STORAGE_ISO_DATE = "storageIsoDate"
+ATTR_ADDED_DATE = "addedDate"
+ATTR_ADDED_ISO_DATE = "addedIsoDate"
+ATTR_EXPIRY_DATE = "expiryDate"
+ATTR_EXPIRY_ISO_DATE = "expiryIsoDate"
 ATTR_ITEM_ID = "itemId"
 ATTR_ITEMS = "items"
 ATTR_UPDATED_AT = "updated_at"

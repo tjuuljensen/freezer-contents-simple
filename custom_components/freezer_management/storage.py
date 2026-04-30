@@ -11,13 +11,15 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
 from .const import (
+    ATTR_ADDED_DATE,
+    ATTR_ADDED_ISO_DATE,
+    ATTR_EXPIRY_DATE,
+    ATTR_EXPIRY_ISO_DATE,
     ATTR_FREEZER_COMPARTMENT,
     ATTR_ITEM,
     ATTR_ITEM_ID,
     ATTR_ITEMS,
     ATTR_PACKAGING_TYPE,
-    ATTR_STORAGE_DATE,
-    ATTR_STORAGE_ISO_DATE,
     ATTR_UPDATED_AT,
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
@@ -31,8 +33,10 @@ class FreezerItem(TypedDict):
     item: str
     packagingType: str
     freezerCompartment: str
-    storageDate: str
-    storageIsoDate: str
+    addedDate: str
+    addedIsoDate: str
+    expiryDate: str
+    expiryIsoDate: str
 
 
 class FreezerStoreData(TypedDict):
@@ -62,6 +66,7 @@ class FreezerInventoryStore:
     loaded: bool = False
 
     def __post_init__(self) -> None:
+        """Initialize storage."""
         self._store = Store[FreezerStoreData](
             self.hass,
             STORAGE_VERSION,
@@ -70,13 +75,16 @@ class FreezerInventoryStore:
 
     @property
     def items(self) -> list[FreezerItem]:
+        """Return items."""
         return self._data[ATTR_ITEMS]
 
     @property
     def updated_at(self) -> str:
+        """Return last update timestamp."""
         return self._data[ATTR_UPDATED_AT]
 
     async def async_load(self) -> None:
+        """Load persisted state."""
         raw = await self._store.async_load()
         self._data = self._normalize_store(raw)
         self.loaded = True
@@ -84,6 +92,7 @@ class FreezerInventoryStore:
 
     @callback
     def async_add_listener(self, listener: Listener):
+        """Subscribe to updates."""
         self._listeners.append(listener)
 
         @callback
@@ -99,17 +108,27 @@ class FreezerInventoryStore:
         item: str,
         packaging_type: str = "",
         freezer_compartment: str = "",
-        storage_date: str | None = None,
+        added_date: str | None = None,
+        expiry_date: str | None = None,
     ) -> FreezerItem:
+        """Add an item."""
         now = datetime.now(UTC)
         normalized_item: FreezerItem = {
             ATTR_ITEM_ID: uuid4().hex,
             ATTR_ITEM: item.strip(),
             ATTR_PACKAGING_TYPE: packaging_type.strip(),
             ATTR_FREEZER_COMPARTMENT: freezer_compartment.strip(),
-            ATTR_STORAGE_DATE: storage_date.strip() if storage_date else now.date().isoformat(),
-            ATTR_STORAGE_ISO_DATE: now.isoformat(),
+            ATTR_ADDED_DATE: added_date.strip() if added_date else now.date().isoformat(),
+            ATTR_ADDED_ISO_DATE: now.isoformat(),
+            ATTR_EXPIRY_DATE: expiry_date.strip() if expiry_date else "",
+            ATTR_EXPIRY_ISO_DATE: "",
         }
+
+        if normalized_item[ATTR_EXPIRY_DATE]:
+            normalized_item[ATTR_EXPIRY_ISO_DATE] = _date_to_iso(
+                normalized_item[ATTR_EXPIRY_DATE]
+            )
+
         self._data[ATTR_ITEMS].append(normalized_item)
         self._touch_updated_at(now)
         await self._async_save()
@@ -117,6 +136,7 @@ class FreezerInventoryStore:
         return normalized_item
 
     async def async_remove_item(self, item_id: str) -> bool:
+        """Remove one item."""
         original_count = len(self._data[ATTR_ITEMS])
         self._data[ATTR_ITEMS] = [
             item for item in self._data[ATTR_ITEMS] if item[ATTR_ITEM_ID] != item_id
@@ -129,21 +149,25 @@ class FreezerInventoryStore:
         return removed
 
     async def async_clear(self) -> None:
+        """Clear all items."""
         self._data[ATTR_ITEMS] = []
         self._touch_updated_at()
         await self._async_save()
         self._notify()
 
     async def _async_save(self) -> None:
+        """Persist state."""
         await self._store.async_save(self._data)
 
     @callback
     def _notify(self) -> None:
+        """Notify listeners."""
         for listener in list(self._listeners):
             listener()
 
     @staticmethod
     def _normalize_store(raw: FreezerStoreData | dict[str, Any] | None) -> FreezerStoreData:
+        """Normalize store payload."""
         items: list[FreezerItem] = []
         updated_at = ""
 
@@ -163,6 +187,7 @@ class FreezerInventoryStore:
 
     @staticmethod
     def _normalize_item(raw_item: Any) -> FreezerItem | None:
+        """Normalize one item from current or old schemas."""
         if not isinstance(raw_item, dict):
             return None
 
@@ -185,16 +210,26 @@ class FreezerInventoryStore:
             or raw_item.get("potCompartment")
             or ""
         ).strip()
-        storage_date = str(
-            raw_item.get(ATTR_STORAGE_DATE)
+        added_date = str(
+            raw_item.get(ATTR_ADDED_DATE)
+            or raw_item.get("storageDate")
             or raw_item.get("date")
             or raw_item.get("potDate")
             or ""
         ).strip()
-        storage_iso_date = str(
-            raw_item.get(ATTR_STORAGE_ISO_DATE)
+        added_iso_date = str(
+            raw_item.get(ATTR_ADDED_ISO_DATE)
+            or raw_item.get("storageIsoDate")
             or raw_item.get("iso_date")
             or raw_item.get("potIsoDate")
+            or ""
+        ).strip()
+        expiry_date = str(
+            raw_item.get(ATTR_EXPIRY_DATE)
+            or ""
+        ).strip()
+        expiry_iso_date = str(
+            raw_item.get(ATTR_EXPIRY_ISO_DATE)
             or ""
         ).strip()
         item_id = str(
@@ -206,19 +241,43 @@ class FreezerInventoryStore:
         if not item:
             return None
 
-        if not storage_date and storage_iso_date:
-            storage_date = storage_iso_date[:10]
-        if not storage_iso_date:
-            storage_iso_date = datetime.now(UTC).isoformat()
+        if not added_date and added_iso_date:
+            added_date = _iso_to_date(added_iso_date)
+        if not added_iso_date:
+            added_iso_date = datetime.now(UTC).isoformat()
+
+        if expiry_date and not expiry_iso_date:
+            expiry_iso_date = _date_to_iso(expiry_date)
+        if expiry_iso_date and not expiry_date:
+            expiry_date = _iso_to_date(expiry_iso_date)
 
         return {
             ATTR_ITEM_ID: item_id,
             ATTR_ITEM: item,
             ATTR_PACKAGING_TYPE: packaging_type,
             ATTR_FREEZER_COMPARTMENT: freezer_compartment,
-            ATTR_STORAGE_DATE: storage_date,
-            ATTR_STORAGE_ISO_DATE: storage_iso_date,
+            ATTR_ADDED_DATE: added_date,
+            ATTR_ADDED_ISO_DATE: added_iso_date,
+            ATTR_EXPIRY_DATE: expiry_date,
+            ATTR_EXPIRY_ISO_DATE: expiry_iso_date,
         }
 
     def _touch_updated_at(self, now: datetime | None = None) -> None:
+        """Update timestamp."""
         self._data[ATTR_UPDATED_AT] = (now or datetime.now(UTC)).isoformat()
+
+
+def _iso_to_date(value: str) -> str:
+    """Convert ISO datetime to YYYY-MM-DD if possible."""
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        return value[:10]
+
+
+def _date_to_iso(value: str) -> str:
+    """Convert YYYY-MM-DD to ISO datetime."""
+    try:
+        return datetime.fromisoformat(value).replace(tzinfo=UTC).isoformat()
+    except ValueError:
+        return ""

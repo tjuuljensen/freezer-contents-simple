@@ -4,7 +4,14 @@ const CARD_TYPE = "freezer-management-card";
 const CARD_NAME = "Freezer Management Card";
 const DOMAIN = "freezer_management";
 const INTEGRATION_DOMAIN = "freezer_management";
-const SORT_OPTIONS = ["freezerCompartment", "newest", "oldest", "item"];
+const SORT_OPTIONS = ["freezerCompartment", "newest", "oldest", "item", "expiryDate"];
+const DATE_DISPLAY_OPTIONS = [
+  "locale_short",
+  "locale_medium",
+  "locale_long",
+  "iso",
+  "relative",
+];
 
 class FreezerManagementCard extends HTMLElement {
   constructor() {
@@ -13,7 +20,12 @@ class FreezerManagementCard extends HTMLElement {
     this._hass = null;
     this.config = null;
     this.items = [];
-    this.form = { item: "", packagingType: "", freezerCompartment: "" };
+    this.form = {
+      item: "",
+      packagingType: "",
+      freezerCompartment: "",
+      expiryDate: "",
+    };
     this.errorMessage = "";
     this.pending = false;
     this.entityUnavailable = true;
@@ -26,13 +38,18 @@ class FreezerManagementCard extends HTMLElement {
       title: "",
       entity: "",
       sort_by: "freezerCompartment",
+      date_display: "locale_medium",
       item_header: "",
       packaging_header: "",
       compartment_header: "",
-      date_header: "",
+      added_header: "",
+      expiry_header: "",
       show_shortcuts: true,
       shortcuts: [],
-      grid_options: { columns: 12, rows: 5 },
+      grid_options: {
+        columns: 12,
+        rows: 5,
+      },
     };
   }
 
@@ -44,7 +61,12 @@ class FreezerManagementCard extends HTMLElement {
     this.config = {
       ...FreezerManagementCard.getStubConfig(),
       ...config,
-      sort_by: SORT_OPTIONS.includes(config?.sort_by) ? config.sort_by : "freezerCompartment",
+      sort_by: SORT_OPTIONS.includes(config?.sort_by)
+        ? config.sort_by
+        : "freezerCompartment",
+      date_display: DATE_DISPLAY_OPTIONS.includes(config?.date_display)
+        ? config.date_display
+        : "locale_medium",
       show_shortcuts: config?.show_shortcuts !== false,
       shortcuts: Array.isArray(config?.shortcuts) ? config.shortcuts : [],
     };
@@ -63,18 +85,35 @@ class FreezerManagementCard extends HTMLElement {
   }
 
   getGridOptions() {
-    return { columns: 12, min_columns: 4, rows: 5, min_rows: 5 };
+    return {
+      columns: 12,
+      min_columns: 4,
+      rows: 5,
+      min_rows: 5,
+    };
   }
 
   refreshFromHass() {
-    if (!this.config || !this._hass) return;
-    const stateObj = this.config.entity ? this._hass.states?.[this.config.entity] ?? null : null;
+    if (!this.config || !this._hass) {
+      return;
+    }
+
+    const stateObj = this.config.entity
+      ? this._hass.states?.[this.config.entity] ?? null
+      : null;
     const signature = stateObj
-      ? JSON.stringify([stateObj.state, stateObj.attributes?.items, stateObj.attributes?.updated_at])
+      ? JSON.stringify([
+          stateObj.state,
+          stateObj.attributes?.items,
+          stateObj.attributes?.updated_at,
+        ])
       : "missing";
     const language = this._getLanguage();
 
-    if (this._lastStateSignature !== signature || this._lastLanguage !== language) {
+    if (
+      this._lastStateSignature !== signature ||
+      this._lastLanguage !== language
+    ) {
       this._lastStateSignature = signature;
       this._lastLanguage = language;
       this.items = this._parseItems(stateObj);
@@ -88,9 +127,14 @@ class FreezerManagementCard extends HTMLElement {
   }
 
   render() {
-    if (!this.config || !this.shadowRoot) return;
+    if (!this.config || !this.shadowRoot) {
+      return;
+    }
 
-    const stateObj = this.config.entity ? this._hass?.states?.[this.config.entity] ?? null : null;
+    const stateObj = this.config.entity
+      ? this._hass?.states?.[this.config.entity] ?? null
+      : null;
+
     const title =
       this.config.title?.trim() ||
       stateObj?.attributes?.friendly_name ||
@@ -102,13 +146,22 @@ class FreezerManagementCard extends HTMLElement {
 
     let bodyHtml = "";
     if (!this.config.entity) {
-      bodyHtml = `<div class="fm-empty">${this._escapeHtml(this._label("setup-required", "Select a Freezer Management inventory entity in the card configuration."))}</div>`;
+      bodyHtml = `<div class="fm-empty">${this._escapeHtml(
+        this._label(
+          "setup-required",
+          "Select a Freezer Management inventory entity in the card configuration."
+        )
+      )}</div>`;
     } else {
       bodyHtml = `
         ${this._renderPanel(shortcuts, formDisabled)}
-        ${this.items.length > 0
-          ? this._renderTable()
-          : `<div class="fm-empty">${this._escapeHtml(this._label("freezer-empty", "No items saved yet."))}</div>`}
+        ${
+          this.items.length > 0
+            ? this._renderTable()
+            : `<div class="fm-empty">${this._escapeHtml(
+                this._label("freezer-empty", "No items saved yet.")
+              )}</div>`
+        }
       `;
     }
 
@@ -116,155 +169,310 @@ class FreezerManagementCard extends HTMLElement {
     if (this.config.entity) {
       status.push(
         this.entityUnavailable
-          ? this._label("inventory-unavailable", "The freezer inventory entity is unavailable.")
+          ? this._label(
+              "inventory-unavailable",
+              "The freezer inventory entity is unavailable."
+            )
           : `${this._label("status-items", "Items")}: ${this.items.length}`
       );
     }
-    if (this.errorMessage) status.push(this.errorMessage);
+    if (this.errorMessage) {
+      status.push(this.errorMessage);
+    }
 
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display:block; width:100%; }
-        ha-card { width:100%; }
+        :host {
+          display: block;
+          width: 100%;
+        }
+
+        ha-card {
+          width: 100%;
+        }
+
         .fm-panel {
-          display:grid;
-          gap:12px;
-          margin-bottom:16px;
-          padding:0 0 16px;
-          border-bottom:1px solid var(--divider-color);
-          background:transparent;
-          border-radius:0;
-          box-shadow:none;
+          display: grid;
+          gap: 16px;
+          margin-bottom: 16px;
+          padding: 0 0 16px;
+          border-bottom: 1px solid var(--divider-color);
+          background: transparent;
+          border-radius: 0;
+          box-shadow: none;
         }
-        .fm-panel-title { font-weight:600; }
-        .fm-shortcuts { display:flex; flex-wrap:wrap; gap:8px; }
+
+        .fm-panel-title {
+          font-weight: 600;
+        }
+
+        .fm-shortcuts {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
         .fm-form {
-          display:grid;
-          gap:12px;
-          grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1fr) auto;
-          align-items:end;
+          display: grid;
+          gap: 12px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          align-items: end;
         }
+
         .fm-actions {
-          display:flex;
-          gap:8px;
-          justify-content:flex-end;
-          align-items:center;
-          flex-wrap:nowrap;
+          display: flex;
+          gap: 8px;
+          justify-content: flex-end;
+          align-items: center;
+          flex-wrap: wrap;
         }
-        .fm-table-wrap { overflow-x:auto; }
-        .fm-table { width:100%; border-collapse:collapse; }
-        .fm-table th, .fm-table td {
-          padding:10px 4px;
-          border-bottom:1px solid var(--divider-color);
-          vertical-align:middle;
+
+        .fm-table-wrap {
+          overflow-x: auto;
         }
-        .fm-table th { text-align:left; font-weight:600; }
-        .fm-table td.fm-date, .fm-table th.fm-date,
-        .fm-table td.fm-action, .fm-table th.fm-action {
-          text-align:right;
-          white-space:nowrap;
+
+        .fm-table {
+          width: 100%;
+          border-collapse: collapse;
         }
-        .fm-empty { padding:12px 0 4px; color:var(--secondary-text-color); }
-        .fm-row-item { word-break:break-word; }
-        .fm-footer-note { margin-top:10px; font-size:.85rem; color:var(--secondary-text-color); }
+
+        .fm-table th,
+        .fm-table td {
+          padding: 10px 4px;
+          border-bottom: 1px solid var(--divider-color);
+          vertical-align: middle;
+        }
+
+        .fm-table th {
+          text-align: left;
+          font-weight: 600;
+        }
+
+        .fm-table td.fm-date,
+        .fm-table th.fm-date,
+        .fm-table td.fm-action,
+        .fm-table th.fm-action {
+          text-align: right;
+          white-space: nowrap;
+        }
+
+        .fm-empty {
+          padding: 12px 0 4px;
+          color: var(--secondary-text-color);
+        }
+
+        .fm-row-item {
+          word-break: break-word;
+        }
+
+        .fm-footer-note {
+          margin-top: 10px;
+          font-size: 0.85rem;
+          color: var(--secondary-text-color);
+        }
+
         button {
-          appearance:none;
-          border:none;
-          border-radius:10px;
-          padding:10px 14px;
-          font:inherit;
-          cursor:pointer;
-          background:var(--primary-color);
-          color:var(--text-primary-color, white);
-          white-space:nowrap;
+          appearance: none;
+          border: none;
+          border-radius: 10px;
+          padding: 10px 14px;
+          font: inherit;
+          cursor: pointer;
+          background: var(--primary-color);
+          color: var(--text-primary-color, white);
         }
+
         button.fm-secondary {
-          background:transparent;
-          color:var(--primary-text-color);
-          border:1px solid var(--divider-color);
+          background: transparent;
+          color: var(--primary-text-color);
+          border: 1px solid var(--divider-color);
         }
-        button.fm-icon { padding:8px 10px; }
-        button:disabled { opacity:.6; cursor:not-allowed; }
-        label.fm-field { display:grid; gap:6px; font-size:.9rem; min-width:0; }
+
+        button.fm-icon {
+          padding: 8px 10px;
+        }
+
+        button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        label.fm-field {
+          display: grid;
+          gap: 6px;
+          font-size: 0.9rem;
+        }
+
         input {
-          width:100%;
-          min-width:0;
-          box-sizing:border-box;
-          padding:10px 12px;
-          border-radius:10px;
-          border:1px solid var(--divider-color);
-          background:var(--card-background-color);
-          color:var(--primary-text-color);
-          font:inherit;
+          width: 100%;
+          box-sizing: border-box;
+          padding: 10px 12px;
+          border-radius: 10px;
+          border: 1px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font: inherit;
         }
-        .fm-warning { font-size:.85rem; color:var(--warning-color, #db4437); }
-        @media (max-width: 1100px) {
-          .fm-form { grid-template-columns: 1fr 1fr; }
-          .fm-actions { grid-column: 1 / -1; justify-content:flex-start; }
+
+        .fm-warning {
+          font-size: 0.85rem;
+          color: var(--warning-color, #db4437);
         }
-        @media (max-width: 700px) {
-          .fm-form { grid-template-columns: 1fr; }
-          .fm-actions { justify-content:stretch; flex-wrap:wrap; }
-          .fm-actions button { flex:1 1 auto; }
+
+        @media (max-width: 980px) {
+          .fm-form {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 640px) {
+          .fm-form {
+            grid-template-columns: 1fr;
+          }
+
+          .fm-actions {
+            justify-content: stretch;
+          }
+
+          .fm-actions button {
+            flex: 1 1 auto;
+          }
         }
       </style>
+
       <ha-card header="${this._escapeAttr(title)}">
-        <div class="card-content">
+        <div class="card-content fm-card">
           ${bodyHtml}
-          ${status.length ? `<div class="fm-footer-note">${this._escapeHtml(status.join(" • "))}</div>` : ""}
-          ${this.config.entity && this.entityUnavailable
-            ? `<div class="fm-warning">${this._escapeHtml(this._label("inventory-warning-readonly", "Editing is disabled until the freezer inventory is available again."))}</div>`
-            : ""}
-          ${this.config.entity && !this.entityUnavailable && this.items.length > 0
-            ? `<div class="fm-actions" style="margin-top: 12px;">
-                <button class="fm-secondary" id="clear-inventory-btn" ${canClear ? "" : "disabled"}>
-                  ${this._escapeHtml(this._label("clear-inventory-button", "Clear inventory"))}
-                </button>
-              </div>`
-            : ""}
+          ${
+            status.length
+              ? `<div class="fm-footer-note">${this._escapeHtml(
+                  status.join(" • ")
+                )}</div>`
+              : ""
+          }
+          ${
+            this.config.entity && this.entityUnavailable
+              ? `<div class="fm-warning">${this._escapeHtml(
+                  this._label(
+                    "inventory-warning-readonly",
+                    "Editing is disabled until the freezer inventory is available again."
+                  )
+                )}</div>`
+              : ""
+          }
+          ${
+            this.config.entity && !this.entityUnavailable && this.items.length > 0
+              ? `<div class="fm-actions" style="margin-top: 12px;">
+                  <button class="fm-secondary" id="clear-inventory-btn" ${
+                    canClear ? "" : "disabled"
+                  }>
+                    ${this._escapeHtml(
+                      this._label("clear-inventory-button", "Clear inventory")
+                    )}
+                  </button>
+                </div>`
+              : ""
+          }
         </div>
       </ha-card>
     `;
+
     this._bindEvents();
   }
 
   _renderPanel(shortcuts, disabled) {
     const shortcutHtml =
       this.config.show_shortcuts && shortcuts.length
-        ? `<div class="fm-shortcuts">
-            ${shortcuts.map((shortcut) => `
-              <button type="button" class="fm-secondary fm-shortcut" data-shortcut="${this._escapeAttr(shortcut)}" ${disabled ? "disabled" : ""}>
-                ${this._escapeHtml(shortcut)}
-              </button>
-            `).join("")}
-          </div>`
+        ? `
+          <div class="fm-shortcuts">
+            ${shortcuts
+              .map(
+                (shortcut) => `
+                  <button
+                    type="button"
+                    class="fm-secondary fm-shortcut"
+                    data-shortcut="${this._escapeAttr(shortcut)}"
+                    ${disabled ? "disabled" : ""}
+                  >
+                    ${this._escapeHtml(shortcut)}
+                  </button>
+                `
+              )
+              .join("")}
+          </div>
+        `
         : "";
 
     return `
       <div class="fm-panel">
-        <div class="fm-panel-title">${this._escapeHtml(this._label("form-title", "Add freezer item"))}</div>
+        <div class="fm-panel-title">${this._escapeHtml(
+          this._label("form-title", "Add freezer item")
+        )}</div>
+
         ${shortcutHtml}
+
         <div class="fm-form">
           <label class="fm-field">
-            <span>${this._escapeHtml(this._label("item-label", "Item"))}</span>
-            <input id="fm-item" type="text" value="${this._escapeAttr(this.form.item || "")}" placeholder="${this._escapeAttr(this._label("item-placeholder", "Soup, bolognese, ..."))}" ${disabled ? "disabled" : ""}>
+            <span>${this._escapeHtml(this._label("field-item", "Item"))}</span>
+            <input
+              id="fm-item"
+              type="text"
+              value="${this._escapeAttr(this.form.item || "")}"
+              placeholder="${this._escapeAttr(
+                this._label("item-placeholder", "Soup, bolognese, ...")
+              )}"
+              ${disabled ? "disabled" : ""}
+            />
           </label>
+
           <label class="fm-field">
-            <span>${this._escapeHtml(this._label("packaging-label", "Packaging"))}</span>
-            <input id="fm-packaging" type="text" value="${this._escapeAttr(this.form.packagingType || "")}" ${disabled ? "disabled" : ""}>
+            <span>${this._escapeHtml(
+              this._label("field-packaging", "Packaging")
+            )}</span>
+            <input
+              id="fm-packaging"
+              type="text"
+              value="${this._escapeAttr(this.form.packagingType || "")}"
+              ${disabled ? "disabled" : ""}
+            />
           </label>
+
           <label class="fm-field">
-            <span>${this._escapeHtml(this._label("compartment-label", "Compartment"))}</span>
-            <input id="fm-compartment" type="text" value="${this._escapeAttr(this.form.freezerCompartment || "")}" ${disabled ? "disabled" : ""}>
+            <span>${this._escapeHtml(
+              this._label("field-compartment", "Compartment")
+            )}</span>
+            <input
+              id="fm-compartment"
+              type="text"
+              value="${this._escapeAttr(this.form.freezerCompartment || "")}"
+              ${disabled ? "disabled" : ""}
+            />
           </label>
-          <div class="fm-actions">
-            <button id="save-item-btn" ${disabled ? "disabled" : ""}>
-              ${this._escapeHtml(this.pending ? this._label("saving-button", "Saving...") : this._label("save-item-button", "Save"))}
-            </button>
-            <button id="clear-form-btn" class="fm-secondary" ${disabled ? "disabled" : ""}>
-              ${this._escapeHtml(this._label("clear-form-button", "Clear"))}
-            </button>
-          </div>
+
+          <label class="fm-field">
+            <span>${this._escapeHtml(this._label("field-expiry", "Expiry"))}</span>
+            <input
+              id="fm-expiry"
+              type="date"
+              value="${this._escapeAttr(this.form.expiryDate || "")}"
+              ${disabled ? "disabled" : ""}
+            />
+          </label>
+        </div>
+
+        <div class="fm-actions">
+          <button id="save-item-btn" ${disabled ? "disabled" : ""}>
+            ${this._escapeHtml(
+              this.pending
+                ? this._label("saving-button", "Saving...")
+                : this._label("save-item-button", "Save")
+            )}
+          </button>
+          <button id="clear-form-btn" class="fm-secondary" ${
+            disabled ? "disabled" : ""
+          }>
+            ${this._escapeHtml(this._label("clear-form-button", "Clear"))}
+          </button>
         </div>
       </div>
     `;
@@ -272,10 +480,21 @@ class FreezerManagementCard extends HTMLElement {
 
   _renderTable() {
     const headers = {
-      item: this.config.item_header?.trim() || this._label("table-header-item", "Item"),
-      packaging: this.config.packaging_header?.trim() || this._label("table-header-packaging", "Type"),
-      compartment: this.config.compartment_header?.trim() || this._label("table-header-compartment", "Cmp"),
-      date: this.config.date_header?.trim() || this._label("table-header-date", "Date"),
+      item:
+        this.config.item_header?.trim() ||
+        this._label("table-header-item", "Item"),
+      packaging:
+        this.config.packaging_header?.trim() ||
+        this._label("table-header-packaging", "Packaging"),
+      compartment:
+        this.config.compartment_header?.trim() ||
+        this._label("table-header-compartment", "Compartment"),
+      added:
+        this.config.added_header?.trim() ||
+        this._label("table-header-added", "Added"),
+      expiry:
+        this.config.expiry_header?.trim() ||
+        this._label("table-header-expiry", "Expiry"),
     };
 
     return `
@@ -286,22 +505,50 @@ class FreezerManagementCard extends HTMLElement {
               <th>${this._escapeHtml(headers.item)}</th>
               <th>${this._escapeHtml(headers.packaging)}</th>
               <th>${this._escapeHtml(headers.compartment)}</th>
-              <th class="fm-date">${this._escapeHtml(headers.date)}</th>
+              <th class="fm-date">${this._escapeHtml(headers.added)}</th>
+              <th class="fm-date">${this._escapeHtml(headers.expiry)}</th>
               <th class="fm-action"></th>
             </tr>
           </thead>
           <tbody>
-            ${this.items.map((item) => `
-              <tr>
-                <td class="fm-row-item">${this._escapeHtml(item.item || "")}</td>
-                <td>${this._escapeHtml(item.packagingType || "")}</td>
-                <td>${this._escapeHtml(item.freezerCompartment || "")}</td>
-                <td class="fm-date">${this._escapeHtml(item.storageDate || "")}</td>
-                <td class="fm-action">
-                  <button class="fm-secondary fm-icon fm-delete" data-item-id="${this._escapeAttr(item.itemId || "")}" aria-label="${this._escapeAttr(this._label("delete-item-label", "Delete item"))}" title="${this._escapeAttr(this._label("delete-item-label", "Delete item"))}" ${this.pending || this.entityUnavailable ? "disabled" : ""}>✕</button>
-                </td>
-              </tr>
-            `).join("")}
+            ${this.items
+              .map(
+                (item) => `
+                  <tr>
+                    <td class="fm-row-item">${this._escapeHtml(item.item || "")}</td>
+                    <td>${this._escapeHtml(item.packagingType || "")}</td>
+                    <td>${this._escapeHtml(item.freezerCompartment || "")}</td>
+                    <td class="fm-date">${this._escapeHtml(
+                      this._formatConfiguredDate(
+                        item.addedDate,
+                        item.addedIsoDate
+                      )
+                    )}</td>
+                    <td class="fm-date">${this._escapeHtml(
+                      this._formatConfiguredDate(
+                        item.expiryDate,
+                        item.expiryIsoDate
+                      )
+                    )}</td>
+                    <td class="fm-action">
+                      <button
+                        class="fm-secondary fm-icon fm-delete"
+                        data-item-id="${this._escapeAttr(item.itemId || "")}"
+                        aria-label="${this._escapeAttr(
+                          this._label("delete-item-label", "Delete item")
+                        )}"
+                        title="${this._escapeAttr(
+                          this._label("delete-item-label", "Delete item")
+                        )}"
+                        ${this.pending || this.entityUnavailable ? "disabled" : ""}
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                `
+              )
+              .join("")}
           </tbody>
         </table>
       </div>
@@ -312,52 +559,103 @@ class FreezerManagementCard extends HTMLElement {
     const itemInput = this.shadowRoot.getElementById("fm-item");
     const packagingInput = this.shadowRoot.getElementById("fm-packaging");
     const compartmentInput = this.shadowRoot.getElementById("fm-compartment");
-    itemInput?.addEventListener("input", (e) => { this.form.item = e.target.value; this.errorMessage = ""; });
-    packagingInput?.addEventListener("input", (e) => { this.form.packagingType = e.target.value; });
-    compartmentInput?.addEventListener("input", (e) => { this.form.freezerCompartment = e.target.value; });
-    [itemInput, packagingInput, compartmentInput].forEach((el) => el?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); this._saveItem(); }
-    }));
-    this.shadowRoot.getElementById("save-item-btn")?.addEventListener("click", () => this._saveItem());
-    this.shadowRoot.getElementById("clear-form-btn")?.addEventListener("click", () => this._clearForm());
-    this.shadowRoot.getElementById("clear-inventory-btn")?.addEventListener("click", () => this._clearInventory());
-    this.shadowRoot.querySelectorAll(".fm-shortcut").forEach((button) => button.addEventListener("click", () => {
-      this.form.item = button.dataset.shortcut || "";
+    const expiryInput = this.shadowRoot.getElementById("fm-expiry");
+
+    itemInput?.addEventListener("input", (event) => {
+      this.form.item = event.target.value;
       this.errorMessage = "";
-      const input = this.shadowRoot.getElementById("fm-item");
-      if (input) {
-        input.value = this.form.item;
-        input.focus();
-        input.select();
-      }
-    }));
-    this.shadowRoot.querySelectorAll(".fm-delete").forEach((button) => button.addEventListener("click", () => {
-      const itemId = button.dataset.itemId;
-      if (itemId) this._deleteItem(itemId);
-    }));
+    });
+    packagingInput?.addEventListener("input", (event) => {
+      this.form.packagingType = event.target.value;
+    });
+    compartmentInput?.addEventListener("input", (event) => {
+      this.form.freezerCompartment = event.target.value;
+    });
+    expiryInput?.addEventListener("input", (event) => {
+      this.form.expiryDate = event.target.value;
+    });
+
+    [itemInput, packagingInput, compartmentInput, expiryInput].forEach((el) =>
+      el?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          this._saveItem();
+        }
+      })
+    );
+
+    this.shadowRoot
+      .getElementById("save-item-btn")
+      ?.addEventListener("click", () => this._saveItem());
+
+    this.shadowRoot
+      .getElementById("clear-form-btn")
+      ?.addEventListener("click", () => this._clearForm());
+
+    this.shadowRoot
+      .getElementById("clear-inventory-btn")
+      ?.addEventListener("click", () => this._clearInventory());
+
+    this.shadowRoot.querySelectorAll(".fm-shortcut").forEach((button) => {
+      button.addEventListener("click", () => {
+        this.form.item = button.dataset.shortcut || "";
+        this.errorMessage = "";
+        this.render();
+        const newItemInput = this.shadowRoot.getElementById("fm-item");
+        newItemInput?.focus();
+        newItemInput?.select();
+      });
+    });
+
+    this.shadowRoot.querySelectorAll(".fm-delete").forEach((button) => {
+      button.addEventListener("click", () => {
+        const itemId = button.dataset.itemId;
+        if (itemId) {
+          this._deleteItem(itemId);
+        }
+      });
+    });
   }
 
   async _saveItem() {
-    if (!this._hass || !this.config?.entity || this.pending || this.entityUnavailable) return;
+    if (!this._hass || !this.config?.entity || this.pending || this.entityUnavailable) {
+      return;
+    }
+
     const item = (this.form.item || "").trim();
     if (!item) {
-      this.errorMessage = this._label("validation-missing-item", "Enter an item before saving.");
+      this.errorMessage = this._label(
+        "validation-missing-item",
+        "Enter an item before saving."
+      );
       this.render();
       return;
     }
+
     this.pending = true;
     this.errorMessage = "";
     this.render();
+
     try {
       await this._hass.callService(DOMAIN, "add_item", {
         entity_id: this.config.entity,
         item,
         packagingType: (this.form.packagingType || "").trim(),
         freezerCompartment: (this.form.freezerCompartment || "").trim(),
+        expiryDate: (this.form.expiryDate || "").trim(),
       });
-      this.form = { item: "", packagingType: "", freezerCompartment: "" };
+
+      this.form = {
+        item: "",
+        packagingType: "",
+        freezerCompartment: "",
+        expiryDate: "",
+      };
     } catch (error) {
-      this.errorMessage = `${this._label("save-error", "Could not save freezer contents.")} ${error?.message || ""}`.trim();
+      this.errorMessage = `${this._label(
+        "save-error",
+        "Could not save freezer contents."
+      )} ${error?.message || ""}`.trim();
     } finally {
       this.pending = false;
       this.render();
@@ -365,14 +663,24 @@ class FreezerManagementCard extends HTMLElement {
   }
 
   async _deleteItem(itemId) {
-    if (!this._hass || !this.config?.entity || this.pending || this.entityUnavailable) return;
+    if (!this._hass || !this.config?.entity || this.pending || this.entityUnavailable) {
+      return;
+    }
+
     this.pending = true;
     this.errorMessage = "";
     this.render();
+
     try {
-      await this._hass.callService(DOMAIN, "remove_item", { entity_id: this.config.entity, itemId });
+      await this._hass.callService(DOMAIN, "remove_item", {
+        entity_id: this.config.entity,
+        itemId,
+      });
     } catch (error) {
-      this.errorMessage = `${this._label("delete-error", "Could not delete freezer item.")} ${error?.message || ""}`.trim();
+      this.errorMessage = `${this._label(
+        "delete-error",
+        "Could not delete freezer item."
+      )} ${error?.message || ""}`.trim();
     } finally {
       this.pending = false;
       this.render();
@@ -380,14 +688,36 @@ class FreezerManagementCard extends HTMLElement {
   }
 
   async _clearInventory() {
-    if (!this._hass || !this.config?.entity || this.pending || this.entityUnavailable || !this.items.length) return;
+    if (
+      !this._hass ||
+      !this.config?.entity ||
+      this.pending ||
+      this.entityUnavailable ||
+      !this.items.length
+    ) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      this._label("clear-inventory-confirm", "Clear the entire inventory?")
+    );
+    if (!confirmed) {
+      return;
+    }
+
     this.pending = true;
     this.errorMessage = "";
     this.render();
+
     try {
-      await this._hass.callService(DOMAIN, "clear_inventory", { entity_id: this.config.entity });
+      await this._hass.callService(DOMAIN, "clear_inventory", {
+        entity_id: this.config.entity,
+      });
     } catch (error) {
-      this.errorMessage = `${this._label("clear-error", "Could not clear freezer inventory.")} ${error?.message || ""}`.trim();
+      this.errorMessage = `${this._label(
+        "clear-error",
+        "Could not clear freezer inventory."
+      )} ${error?.message || ""}`.trim();
     } finally {
       this.pending = false;
       this.render();
@@ -395,7 +725,12 @@ class FreezerManagementCard extends HTMLElement {
   }
 
   _clearForm() {
-    this.form = { item: "", packagingType: "", freezerCompartment: "" };
+    this.form = {
+      item: "",
+      packagingType: "",
+      freezerCompartment: "",
+      expiryDate: "",
+    };
     this.errorMessage = "";
     this.render();
   }
@@ -403,16 +738,47 @@ class FreezerManagementCard extends HTMLElement {
   _parseItems(stateObj) {
     const unavailableStates = new Set(["unavailable", "unknown"]);
     this.entityUnavailable = !stateObj || unavailableStates.has(String(stateObj.state));
-    if (!stateObj || !Array.isArray(stateObj.attributes?.items)) return [];
+
+    if (!stateObj || !Array.isArray(stateObj.attributes?.items)) {
+      return [];
+    }
+
     return this._sortItems(
       stateObj.attributes.items
         .map((item, index) => ({
           itemId: String(item?.itemId || item?.id || `row-${index}`),
-          item: String(item?.item || item?.contents || item?.potContents || "").trim(),
-          packagingType: String(item?.packagingType || item?.type || item?.number || item?.potNumber || "").trim(),
-          freezerCompartment: String(item?.freezerCompartment || item?.compartment || item?.potCompartment || "").trim(),
-          storageDate: String(item?.storageDate || item?.date || item?.potDate || "").trim(),
-          storageIsoDate: String(item?.storageIsoDate || item?.iso_date || item?.potIsoDate || "").trim(),
+          item: String(
+            item?.item || item?.contents || item?.potContents || ""
+          ).trim(),
+          packagingType: String(
+            item?.packagingType ||
+              item?.type ||
+              item?.number ||
+              item?.potNumber ||
+              ""
+          ).trim(),
+          freezerCompartment: String(
+            item?.freezerCompartment ||
+              item?.compartment ||
+              item?.potCompartment ||
+              ""
+          ).trim(),
+          addedDate: String(
+            item?.addedDate ||
+              item?.storageDate ||
+              item?.date ||
+              item?.potDate ||
+              ""
+          ).trim(),
+          addedIsoDate: String(
+            item?.addedIsoDate ||
+              item?.storageIsoDate ||
+              item?.iso_date ||
+              item?.potIsoDate ||
+              ""
+          ).trim(),
+          expiryDate: String(item?.expiryDate || "").trim(),
+          expiryIsoDate: String(item?.expiryIsoDate || "").trim(),
         }))
         .filter((item) => item.item)
     );
@@ -420,17 +786,115 @@ class FreezerManagementCard extends HTMLElement {
 
   _sortItems(items) {
     const sortBy = this.config?.sort_by || "freezerCompartment";
-    const collator = new Intl.Collator(this._getLanguage(), { numeric: true, sensitivity: "base" });
+    const collator = new Intl.Collator(this._getLanguage(), {
+      numeric: true,
+      sensitivity: "base",
+    });
+
     return [...items].sort((left, right) => {
-      if (sortBy === "item") return collator.compare(left.item, right.item);
+      if (sortBy === "item") {
+        return collator.compare(left.item, right.item);
+      }
+
       if (sortBy === "newest" || sortBy === "oldest") {
-        const leftDate = Date.parse(left.storageIsoDate || left.storageDate || "") || 0;
-        const rightDate = Date.parse(right.storageIsoDate || right.storageDate || "") || 0;
+        const leftDate = this._dateValue(left.addedIsoDate, left.addedDate);
+        const rightDate = this._dateValue(right.addedIsoDate, right.addedDate);
         return sortBy === "newest" ? rightDate - leftDate : leftDate - rightDate;
       }
-      const compartmentCompare = collator.compare(left.freezerCompartment || "", right.freezerCompartment || "");
-      return compartmentCompare !== 0 ? compartmentCompare : collator.compare(left.item, right.item);
+
+      if (sortBy === "expiryDate") {
+        const leftDate = this._dateValue(left.expiryIsoDate, left.expiryDate);
+        const rightDate = this._dateValue(right.expiryIsoDate, right.expiryDate);
+        return leftDate - rightDate;
+      }
+
+      const compartmentCompare = collator.compare(
+        left.freezerCompartment || "",
+        right.freezerCompartment || ""
+      );
+      if (compartmentCompare !== 0) {
+        return compartmentCompare;
+      }
+      return collator.compare(left.item, right.item);
     });
+  }
+
+  _dateValue(isoValue, dateValue) {
+    const candidate = isoValue || dateValue || "";
+    const timestamp = Date.parse(candidate);
+    return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp;
+  }
+
+  _formatConfiguredDate(dateValue, isoValue) {
+    const displayMode = this.config?.date_display || "locale_medium";
+    const candidate = isoValue || dateValue || "";
+
+    if (!candidate) {
+      return "";
+    }
+
+    if (displayMode === "iso") {
+      return dateValue || candidate.slice(0, 10);
+    }
+
+    const parsed = new Date(candidate);
+    if (Number.isNaN(parsed.getTime())) {
+      return dateValue || candidate;
+    }
+
+    if (displayMode === "relative") {
+      return this._formatRelativeDate(parsed);
+    }
+
+    if (displayMode === "locale_short") {
+      return new Intl.DateTimeFormat(this._getLanguage(), {
+        year: "2-digit",
+        month: "numeric",
+        day: "numeric",
+      }).format(parsed);
+    }
+
+    if (displayMode === "locale_long") {
+      return new Intl.DateTimeFormat(this._getLanguage(), {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }).format(parsed);
+    }
+
+    return new Intl.DateTimeFormat(this._getLanguage(), {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(parsed);
+  }
+
+  _formatRelativeDate(date) {
+    const diffMs = date.getTime() - Date.now();
+    const diffDays = Math.round(diffMs / 86400000);
+
+    if (Math.abs(diffDays) < 1) {
+      return this._formatConfiguredDate(
+        date.toISOString().slice(0, 10),
+        date.toISOString()
+      );
+    }
+
+    const rtf = new Intl.RelativeTimeFormat(this._getLanguage(), {
+      numeric: "auto",
+    });
+
+    if (Math.abs(diffDays) < 31) {
+      return rtf.format(diffDays, "day");
+    }
+
+    const diffMonths = Math.round(diffDays / 30);
+    if (Math.abs(diffMonths) < 12) {
+      return rtf.format(diffMonths, "month");
+    }
+
+    const diffYears = Math.round(diffMonths / 12);
+    return rtf.format(diffYears, "year");
   }
 
   _getShortcuts() {
@@ -440,7 +904,12 @@ class FreezerManagementCard extends HTMLElement {
   }
 
   _getLanguage() {
-    return (this._hass?.locale?.language || this._hass?.language || document.documentElement.lang || "en").split("-")[0];
+    return (
+      this._hass?.locale?.language ||
+      this._hass?.language ||
+      document.documentElement.lang ||
+      "en"
+    ).split("-")[0];
   }
 
   _label(key, fallback) {
@@ -471,7 +940,10 @@ class FreezerManagementCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = { ...FreezerManagementCard.getStubConfig(), ...config };
+    this._config = {
+      ...FreezerManagementCard.getStubConfig(),
+      ...config,
+    };
     this._render();
   }
 
@@ -481,107 +953,311 @@ class FreezerManagementCardEditor extends HTMLElement {
   }
 
   _render() {
-    if (!this.shadowRoot) return;
-    const config = { ...FreezerManagementCard.getStubConfig(), ...this._config };
-    const language = (this._hass?.locale?.language || this._hass?.language || document.documentElement.lang || "en").split("-")[0];
+    if (!this.shadowRoot) {
+      return;
+    }
+
+    const config = {
+      ...FreezerManagementCard.getStubConfig(),
+      ...this._config,
+    };
+
+    const language = this._getLanguage();
     const labels = Resources[language] || Resources.en;
     const states = this._hass?.states || {};
     const entities = Object.keys(states)
       .filter((entityId) => entityId.startsWith("sensor."))
-      .filter((entityId) => states[entityId]?.attributes?.integration_domain === INTEGRATION_DOMAIN)
+      .filter(
+        (entityId) =>
+          states[entityId]?.attributes?.integration_domain === INTEGRATION_DOMAIN
+      )
       .sort();
-    const shortcuts = Array.isArray(config.shortcuts) ? config.shortcuts.join("\n") : "";
+
+    const shortcutsText = Array.isArray(config.shortcuts)
+      ? config.shortcuts.join("\n")
+      : "";
 
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display:block; }
-        .editor { display:grid; gap:16px; }
-        .section { display:grid; gap:12px; padding:16px; border-radius:12px; background:var(--secondary-background-color); }
-        .section-title { font-weight:600; }
-        .grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-        label { display:grid; gap:6px; font-size:.95rem; }
-        input, select, textarea {
-          width:100%;
-          box-sizing:border-box;
-          padding:10px 12px;
-          border:1px solid var(--divider-color);
-          border-radius:10px;
-          background:var(--card-background-color);
-          color:var(--primary-text-color);
-          font:inherit;
+        :host {
+          display: block;
         }
-        textarea { min-height:120px; resize:vertical; }
-        .checkbox { display:flex; align-items:center; gap:10px; font-size:.95rem; }
-        .checkbox input { width:auto; }
-        .hint { font-size:.85rem; color:var(--secondary-text-color); }
+
+        .editor {
+          display: grid;
+          gap: 16px;
+        }
+
+        .section {
+          display: grid;
+          gap: 12px;
+          padding: 16px;
+          border-radius: 12px;
+          background: var(--secondary-background-color);
+        }
+
+        .section-title {
+          font-weight: 600;
+        }
+
+        .grid {
+          display: grid;
+          gap: 12px;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+
+        label {
+          display: grid;
+          gap: 6px;
+          font-size: 0.95rem;
+        }
+
+        input,
+        select,
+        textarea {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 10px 12px;
+          border: 1px solid var(--divider-color);
+          border-radius: 10px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font: inherit;
+        }
+
+        textarea {
+          min-height: 120px;
+          resize: vertical;
+        }
+
+        .checkbox {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 0.95rem;
+        }
+
+        .checkbox input {
+          width: auto;
+        }
+
+        .hint {
+          font-size: 0.85rem;
+          color: var(--secondary-text-color);
+        }
       </style>
+
       <div class="editor">
         <div class="section">
-          <div class="section-title">${labels["editor-section-connection"] || "Connection"}</div>
+          <div class="section-title">${this._escape(
+            labels["editor-section-connection"] || "Connection"
+          )}</div>
           <div class="grid">
             <label>
-              <span>${labels["editor-title"] || "Title"}</span>
-              <input data-field="title" type="text" value="${this._escape(config.title || "")}">
+              <span>${this._escape(labels["editor-title"] || "Title")}</span>
+              <input data-field="title" type="text" value="${this._escape(
+                config.title || ""
+              )}" />
             </label>
+
             <label>
-              <span>${labels["editor-entity"] || "Inventory entity"}</span>
-              <input data-field="entity" type="text" list="inventory-entities" value="${this._escape(config.entity || "")}" placeholder="sensor.main_freezer_inventory">
-              <datalist id="inventory-entities">${entities.map((id) => `<option value="${this._escape(id)}"></option>`).join("")}</datalist>
+              <span>${this._escape(
+                labels["editor-entity"] || "Inventory entity"
+              )}</span>
+              <input
+                data-field="entity"
+                type="text"
+                list="inventory-entities"
+                value="${this._escape(config.entity || "")}"
+                placeholder="sensor.main_freezer_inventory"
+              />
+              <datalist id="inventory-entities">
+                ${entities
+                  .map(
+                    (entityId) =>
+                      `<option value="${this._escape(entityId)}"></option>`
+                  )
+                  .join("")}
+              </datalist>
             </label>
+
             <label>
-              <span>${labels["editor-sort-by"] || "Sort by"}</span>
+              <span>${this._escape(labels["editor-sort-by"] || "Sort by")}</span>
               <select data-field="sort_by">
-                ${SORT_OPTIONS.map((option) => `<option value="${option}" ${config.sort_by === option ? "selected" : ""}>${option}</option>`).join("")}
+                ${SORT_OPTIONS.map(
+                  (option) => `
+                    <option value="${option}" ${
+                    config.sort_by === option ? "selected" : ""
+                  }>${option}</option>
+                  `
+                ).join("")}
+              </select>
+            </label>
+
+            <label>
+              <span>${this._escape(
+                labels["editor-date-display"] || "Date display"
+              )}</span>
+              <select data-field="date_display">
+                ${DATE_DISPLAY_OPTIONS.map(
+                  (option) => `
+                    <option value="${option}" ${
+                    config.date_display === option ? "selected" : ""
+                  }>${option}</option>
+                  `
+                ).join("")}
               </select>
             </label>
           </div>
         </div>
+
         <div class="section">
-          <div class="section-title">${labels["editor-section-display"] || "Display"}</div>
+          <div class="section-title">${this._escape(
+            labels["editor-section-display"] || "Display"
+          )}</div>
           <div class="grid">
-            <label><span>${labels["editor-item-header"] || "Item header"}</span><input data-field="item_header" type="text" value="${this._escape(config.item_header || "")}"></label>
-            <label><span>${labels["editor-packaging-header"] || "Packaging header"}</span><input data-field="packaging_header" type="text" value="${this._escape(config.packaging_header || "")}"></label>
-            <label><span>${labels["editor-compartment-header"] || "Compartment header"}</span><input data-field="compartment_header" type="text" value="${this._escape(config.compartment_header || "")}"></label>
-            <label><span>${labels["editor-date-header"] || "Date header"}</span><input data-field="date_header" type="text" value="${this._escape(config.date_header || "")}"></label>
+            <label>
+              <span>${this._escape(
+                labels["editor-item-header"] || "Item header"
+              )}</span>
+              <input data-field="item_header" type="text" value="${this._escape(
+                config.item_header || ""
+              )}" />
+            </label>
+
+            <label>
+              <span>${this._escape(
+                labels["editor-packaging-header"] || "Packaging header"
+              )}</span>
+              <input
+                data-field="packaging_header"
+                type="text"
+                value="${this._escape(config.packaging_header || "")}"
+              />
+            </label>
+
+            <label>
+              <span>${this._escape(
+                labels["editor-compartment-header"] || "Compartment header"
+              )}</span>
+              <input
+                data-field="compartment_header"
+                type="text"
+                value="${this._escape(config.compartment_header || "")}"
+              />
+            </label>
+
+            <label>
+              <span>${this._escape(
+                labels["editor-added-header"] || "Added header"
+              )}</span>
+              <input
+                data-field="added_header"
+                type="text"
+                value="${this._escape(config.added_header || "")}"
+              />
+            </label>
+
+            <label>
+              <span>${this._escape(
+                labels["editor-expiry-header"] || "Expiry header"
+              )}</span>
+              <input
+                data-field="expiry_header"
+                type="text"
+                value="${this._escape(config.expiry_header || "")}"
+              />
+            </label>
           </div>
         </div>
+
         <div class="section">
-          <div class="section-title">${labels["editor-section-shortcuts"] || "Shortcuts"}</div>
+          <div class="section-title">${this._escape(
+            labels["editor-section-shortcuts"] || "Shortcuts"
+          )}</div>
+
           <label class="checkbox">
-            <input data-field="show_shortcuts" type="checkbox" ${config.show_shortcuts ? "checked" : ""}>
-            <span>${labels["editor-show-shortcuts"] || "Show shortcut buttons"}</span>
+            <input
+              data-field="show_shortcuts"
+              type="checkbox"
+              ${config.show_shortcuts ? "checked" : ""}
+            />
+            <span>${this._escape(
+              labels["editor-show-shortcuts"] || "Show shortcut buttons"
+            )}</span>
           </label>
+
           <label>
-            <span>${labels["editor-shortcuts"] || "Shortcut items"}</span>
-            <textarea data-field="shortcuts">${this._escape(shortcuts)}</textarea>
-            <span class="hint">${labels["editor-shortcuts-hint"] || "One shortcut item per line."}</span>
+            <span>${this._escape(
+              labels["editor-shortcuts"] || "Shortcut items"
+            )}</span>
+            <textarea data-field="shortcuts">${this._escape(shortcutsText)}</textarea>
+            <span class="hint">${this._escape(
+              labels["editor-shortcuts-hint"] || "One shortcut item per line."
+            )}</span>
           </label>
         </div>
       </div>
     `;
 
+    this._bindEditorEvents();
+  }
+
+  _bindEditorEvents() {
     this.shadowRoot.querySelectorAll("[data-field]").forEach((element) => {
-      const isTextLike = element.tagName === "INPUT" || element.tagName === "TEXTAREA";
-      const eventName = element.tagName === "SELECT" || element.type === "checkbox" ? "change" : "change";
-      element.addEventListener(eventName, (event) => {
-        const field = event.target.dataset.field;
-        if (!field) return;
-        const next = { ...this._config };
-        if (field === "show_shortcuts") next.show_shortcuts = Boolean(event.target.checked);
-        else if (field === "shortcuts") next.shortcuts = String(event.target.value || "").split(/\r?\n/).map((v) => v.trim()).filter(Boolean);
-        else next[field] = event.target.value;
-        this._config = next;
-        this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: next }, bubbles: true, composed: true }));
-      });
-      if (isTextLike) {
-        element.addEventListener("input", (event) => {
-          const field = event.target.dataset.field;
-          if (!field) return;
-          if (field === "shortcuts") this._config.shortcuts = String(event.target.value || "").split(/\r?\n/).map((v) => v.trim()).filter(Boolean);
-          else this._config[field] = event.target.value;
-        });
+      const field = element.dataset.field;
+      if (!field) {
+        return;
       }
+
+      if (element.tagName === "SELECT" || element.type === "checkbox") {
+        element.addEventListener("change", (event) => this._handleChange(event));
+        return;
+      }
+
+      element.addEventListener("change", (event) => this._handleChange(event));
+      element.addEventListener("blur", (event) => this._handleChange(event));
     });
+  }
+
+  _handleChange(event) {
+    const field = event.target.dataset.field;
+    if (!field) {
+      return;
+    }
+
+    const nextConfig = {
+      ...this._config,
+    };
+
+    if (field === "show_shortcuts") {
+      nextConfig.show_shortcuts = Boolean(event.target.checked);
+    } else if (field === "shortcuts") {
+      nextConfig.shortcuts = String(event.target.value || "")
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+    } else {
+      nextConfig[field] = event.target.value;
+    }
+
+    this._config = nextConfig;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: nextConfig },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  _getLanguage() {
+    return (
+      this._hass?.locale?.language ||
+      this._hass?.language ||
+      document.documentElement.lang ||
+      "en"
+    ).split("-")[0];
   }
 
   _escape(value) {
@@ -594,11 +1270,20 @@ class FreezerManagementCardEditor extends HTMLElement {
   }
 }
 
-if (!customElements.get(CARD_TYPE)) customElements.define(CARD_TYPE, FreezerManagementCard);
-if (!customElements.get("freezer-management-card-editor")) customElements.define("freezer-management-card-editor", FreezerManagementCardEditor);
+if (!customElements.get(CARD_TYPE)) {
+  customElements.define(CARD_TYPE, FreezerManagementCard);
+}
+
+if (!customElements.get("freezer-management-card-editor")) {
+  customElements.define("freezer-management-card-editor", FreezerManagementCardEditor);
+}
 
 window.customCards = window.customCards || [];
-if (!window.customCards.find((card) => card.type === CARD_TYPE || card.type === `custom:${CARD_TYPE}`)) {
+if (
+  !window.customCards.find(
+    (card) => card.type === CARD_TYPE || card.type === `custom:${CARD_TYPE}`
+  )
+) {
   window.customCards.push({
     type: CARD_TYPE,
     name: CARD_NAME,

@@ -35,8 +35,11 @@
         "freezerCompartment": {
           "name": "Freezer compartment"
         },
-        "storageDate": {
-          "name": "Storage date"
+        "addedDate": {
+          "name": "Added date"
+        },
+        "expiryDate": {
+          "name": "Expiry date"
         }
       }
     },

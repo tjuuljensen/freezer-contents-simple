@@ -11,6 +11,10 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
+    ATTR_ADDED_DATE,
+    ATTR_ADDED_ISO_DATE,
+    ATTR_EXPIRY_DATE,
+    ATTR_EXPIRY_ISO_DATE,
     ATTR_FREEZER_COMPARTMENT,
     ATTR_INTEGRATION_DOMAIN,
     ATTR_ITEM,
@@ -18,8 +22,6 @@ from .const import (
     ATTR_ITEMS,
     ATTR_PACKAGING_TYPE,
     ATTR_SCHEMA_VERSION,
-    ATTR_STORAGE_DATE,
-    ATTR_STORAGE_ISO_DATE,
     ATTR_UPDATED_AT,
     DATA_ENTRIES,
     DOMAIN,
@@ -34,11 +36,14 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    """Set up sensor."""
     store: FreezerInventoryStore = hass.data[DOMAIN][DATA_ENTRIES][entry.entry_id]
     async_add_entities([FreezerInventorySensor(entry, store)])
 
 
 class FreezerInventorySensor(SensorEntity):
+    """Storage-backed freezer inventory sensor."""
+
     _attr_has_entity_name = True
     _attr_name = INVENTORY_ENTITY_NAME
     _attr_icon = "mdi:fridge-outline"
@@ -52,14 +57,17 @@ class FreezerInventorySensor(SensorEntity):
 
     @property
     def native_value(self) -> int:
+        """Return number of items."""
         return len(self._store.items)
 
     @property
     def available(self) -> bool:
+        """Return availability."""
         return self._store.loaded
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        """Return attributes."""
         return {
             ATTR_ITEMS: [
                 {
@@ -67,8 +75,10 @@ class FreezerInventorySensor(SensorEntity):
                     ATTR_ITEM: item[ATTR_ITEM],
                     ATTR_PACKAGING_TYPE: item[ATTR_PACKAGING_TYPE],
                     ATTR_FREEZER_COMPARTMENT: item[ATTR_FREEZER_COMPARTMENT],
-                    ATTR_STORAGE_DATE: item[ATTR_STORAGE_DATE],
-                    ATTR_STORAGE_ISO_DATE: item[ATTR_STORAGE_ISO_DATE],
+                    ATTR_ADDED_DATE: item[ATTR_ADDED_DATE],
+                    ATTR_ADDED_ISO_DATE: item[ATTR_ADDED_ISO_DATE],
+                    ATTR_EXPIRY_DATE: item[ATTR_EXPIRY_DATE],
+                    ATTR_EXPIRY_ISO_DATE: item[ATTR_EXPIRY_ISO_DATE],
                 }
                 for item in self._store.items
             ],
@@ -79,6 +89,7 @@ class FreezerInventorySensor(SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
+        """Return device metadata."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
             name=self._entry.title,
@@ -89,8 +100,10 @@ class FreezerInventorySensor(SensorEntity):
         )
 
     async def async_added_to_hass(self) -> None:
+        """Register store listener."""
         self.async_on_remove(self._store.async_add_listener(self._handle_store_update))
 
     @callback
     def _handle_store_update(self) -> None:
+        """Write new HA state."""
         self.async_write_ha_state()

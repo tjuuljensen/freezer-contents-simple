@@ -15,6 +15,7 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     entry: ConfigEntry,
 ) -> dict[str, Any]:
+    """Return diagnostics."""
     store: FreezerInventoryStore = hass.data[DOMAIN][DATA_ENTRIES][entry.entry_id]
 
     return {
@@ -25,10 +26,11 @@ async def async_get_config_entry_diagnostics(
         ATTR_ITEMS: [
             {
                 "itemId": item.get("itemId"),
-                "freezerCompartment": item.get("freezerCompartment", ""),
-                "storageDate": item.get("storageDate", ""),
                 "item_length": len(item.get("item", "")),
                 "packagingType_length": len(item.get("packagingType", "")),
+                "freezerCompartment": item.get("freezerCompartment", ""),
+                "addedDate": item.get("addedDate", ""),
+                "expiryDate": item.get("expiryDate", ""),
             }
             for item in store.items
         ],
