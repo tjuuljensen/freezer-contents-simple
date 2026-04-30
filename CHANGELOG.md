@@ -1,10 +1,10 @@
 # Changelog
 
-## 1.0.0
+## 1.1.0
 
-- Replaced file + notify + command_line sensor persistence with a companion custom integration.
-- Added a storage-backed inventory sensor and integration services.
-- Updated the custom card to use the integration entity directly.
-- Kept the simplified compartment-only UI.
-- Added Danish integration translations and kept Danish frontend strings.
-- Switched the repository layout to a HACS integration structure.
+- Reworked service calls to use stable manual integration services.
+- Added `packagingType` and renamed item attributes to the new schema.
+- Updated the card to show item, packaging type, freezer compartment, and storage date.
+- Fixed dashboard editor cursor handling for shortcut editing.
+- Removed the nested-card styling look from the form section.
+- Defaulted the card grid options to full-width section usage.

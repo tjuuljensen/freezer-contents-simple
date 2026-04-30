@@ -23,17 +23,20 @@
       "name": "Add item",
       "description": "Add an item to the freezer inventory.",
       "fields": {
-        "contents": {
-          "name": "Contents",
-          "description": "The saved item name."
+        "entity_id": {
+          "name": "Inventory entity"
         },
-        "compartment": {
-          "name": "Compartment",
-          "description": "The freezer compartment or drawer."
+        "item": {
+          "name": "Item"
         },
-        "date": {
-          "name": "Date",
-          "description": "Optional display date stored with the item."
+        "packagingType": {
+          "name": "Packaging type"
+        },
+        "freezerCompartment": {
+          "name": "Freezer compartment"
+        },
+        "storageDate": {
+          "name": "Storage date"
         }
       }
     },
@@ -41,15 +44,22 @@
       "name": "Remove item",
       "description": "Remove an item from the freezer inventory.",
       "fields": {
-        "item_id": {
-          "name": "Item ID",
-          "description": "The internal item ID to remove."
+        "entity_id": {
+          "name": "Inventory entity"
+        },
+        "itemId": {
+          "name": "Item ID"
         }
       }
     },
     "clear_inventory": {
       "name": "Clear inventory",
-      "description": "Remove all items from the freezer inventory."
+      "description": "Remove all items from the freezer inventory.",
+      "fields": {
+        "entity_id": {
+          "name": "Inventory entity"
+        }
+      }
     }
   }
 }

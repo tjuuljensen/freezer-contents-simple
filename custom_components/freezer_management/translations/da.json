@@ -23,17 +23,20 @@
       "name": "Tilføj vare",
       "description": "Tilføj en vare til fryserlageret.",
       "fields": {
-        "contents": {
-          "name": "Indhold",
-          "description": "Navnet på den gemte vare."
+        "entity_id": {
+          "name": "Lagerentitet"
         },
-        "compartment": {
-          "name": "Rum",
-          "description": "Fryserum eller skuffe."
+        "item": {
+          "name": "Vare"
         },
-        "date": {
-          "name": "Dato",
-          "description": "Valgfri visningsdato, som gemmes med varen."
+        "packagingType": {
+          "name": "Emballagetype"
+        },
+        "freezerCompartment": {
+          "name": "Fryserum"
+        },
+        "storageDate": {
+          "name": "Opbevaringsdato"
         }
       }
     },
@@ -41,15 +44,22 @@
       "name": "Fjern vare",
       "description": "Fjern en vare fra fryserlageret.",
       "fields": {
-        "item_id": {
-          "name": "Vare-id",
-          "description": "Det interne vare-id, der skal fjernes."
+        "entity_id": {
+          "name": "Lagerentitet"
+        },
+        "itemId": {
+          "name": "Vare-id"
         }
       }
     },
     "clear_inventory": {
       "name": "Ryd lager",
-      "description": "Fjern alle varer fra fryserlageret."
+      "description": "Fjern alle varer fra fryserlageret.",
+      "fields": {
+        "entity_id": {
+          "name": "Lagerentitet"
+        }
+      }
     }
   }
 }

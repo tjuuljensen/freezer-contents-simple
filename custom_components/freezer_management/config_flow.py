@@ -13,15 +13,12 @@ from .const import DEFAULT_TITLE, DOMAIN
 
 
 class FreezerManagementConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Freezer Management."""
-
     VERSION = 1
 
     async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> FlowResult:
-        """Handle the initial step."""
         if user_input is not None:
             title = user_input["title"].strip() or DEFAULT_TITLE
             return self.async_create_entry(title=title, data={"title": title})

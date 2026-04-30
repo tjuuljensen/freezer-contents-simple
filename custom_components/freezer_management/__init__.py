@@ -3,21 +3,23 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import voluptuous as vol
 
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv, service
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
-    ATTR_COMPARTMENT,
-    ATTR_CONTENTS,
-    ATTR_DATE,
+    ATTR_FREEZER_COMPARTMENT,
+    ATTR_ITEM,
     ATTR_ITEM_ID,
+    ATTR_PACKAGING_TYPE,
+    ATTR_STORAGE_DATE,
     DATA_ENTRIES,
     DOMAIN,
     PLATFORMS,
@@ -28,90 +30,115 @@ from .const import (
 )
 from .storage import FreezerInventoryStore
 
-FreezerManagementConfigEntry = ConfigEntry[FreezerInventoryStore]
 
 _DATA_STATIC_PATH_REGISTERED = "static_path_registered"
 _DATA_SERVICES_REGISTERED = "services_registered"
 
 
+def _get_domain_data(hass: HomeAssistant) -> dict[str, Any]:
+    return hass.data.setdefault(DOMAIN, {})
+
+
+def _get_entry_store(hass: HomeAssistant, entity_id: str) -> FreezerInventoryStore | None:
+    entity_registry = er.async_get(hass)
+    entry = entity_registry.async_get(entity_id)
+    if entry is None or entry.platform != DOMAIN or entry.domain != SENSOR_DOMAIN:
+        return None
+
+    return _get_domain_data(hass).get(DATA_ENTRIES, {}).get(entry.config_entry_id)
+
+
+async def _async_add_item(hass: HomeAssistant, call: ServiceCall) -> None:
+    store = _get_entry_store(hass, call.data["entity_id"])
+    if store is None:
+        raise vol.Invalid("Unknown freezer inventory entity.")
+
+    await store.async_add_item(
+        item=call.data[ATTR_ITEM],
+        packaging_type=call.data.get(ATTR_PACKAGING_TYPE, ""),
+        freezer_compartment=call.data.get(ATTR_FREEZER_COMPARTMENT, ""),
+        storage_date=call.data.get(ATTR_STORAGE_DATE),
+    )
+
+
+async def _async_remove_item(hass: HomeAssistant, call: ServiceCall) -> None:
+    store = _get_entry_store(hass, call.data["entity_id"])
+    if store is None:
+        raise vol.Invalid("Unknown freezer inventory entity.")
+
+    await store.async_remove_item(call.data[ATTR_ITEM_ID])
+
+
+async def _async_clear_inventory(hass: HomeAssistant, call: ServiceCall) -> None:
+    store = _get_entry_store(hass, call.data["entity_id"])
+    if store is None:
+        raise vol.Invalid("Unknown freezer inventory entity.")
+
+    await store.async_clear()
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the Freezer Management integration."""
-    domain_data = hass.data.setdefault(DOMAIN, {})
+    domain_data = _get_domain_data(hass)
+    domain_data.setdefault(DATA_ENTRIES, {})
 
     if not domain_data.get(_DATA_STATIC_PATH_REGISTERED):
         frontend_path = Path(__file__).parent / "frontend"
         await hass.http.async_register_static_paths(
-            [
-                StaticPathConfig(
-                    STATIC_URL_PATH,
-                    str(frontend_path),
-                    False,
-                )
-            ]
+            [StaticPathConfig(STATIC_URL_PATH, str(frontend_path), False)]
         )
         domain_data[_DATA_STATIC_PATH_REGISTERED] = True
 
     if not domain_data.get(_DATA_SERVICES_REGISTERED):
-        service.async_register_platform_entity_service(
-            hass,
+        hass.services.async_register(
             DOMAIN,
             SERVICE_ADD_ITEM,
-            entity_domain=SENSOR_DOMAIN,
-            schema=cv.make_entity_service_schema(
+            lambda call: _async_add_item(hass, call),
+            schema=vol.Schema(
                 {
-                    vol.Required(ATTR_CONTENTS): cv.string,
-                    vol.Optional(ATTR_COMPARTMENT, default=""): cv.string,
-                    vol.Optional(ATTR_DATE): cv.string,
+                    vol.Required("entity_id"): cv.entity_id,
+                    vol.Required(ATTR_ITEM): cv.string,
+                    vol.Optional(ATTR_PACKAGING_TYPE, default=""): cv.string,
+                    vol.Optional(ATTR_FREEZER_COMPARTMENT, default=""): cv.string,
+                    vol.Optional(ATTR_STORAGE_DATE): cv.string,
                 }
             ),
-            func="async_add_item",
         )
-        service.async_register_platform_entity_service(
-            hass,
+        hass.services.async_register(
             DOMAIN,
             SERVICE_REMOVE_ITEM,
-            entity_domain=SENSOR_DOMAIN,
-            schema=cv.make_entity_service_schema(
+            lambda call: _async_remove_item(hass, call),
+            schema=vol.Schema(
                 {
+                    vol.Required("entity_id"): cv.entity_id,
                     vol.Required(ATTR_ITEM_ID): cv.string,
                 }
             ),
-            func="async_remove_item",
         )
-        service.async_register_platform_entity_service(
-            hass,
+        hass.services.async_register(
             DOMAIN,
             SERVICE_CLEAR_INVENTORY,
-            entity_domain=SENSOR_DOMAIN,
-            schema=cv.make_entity_service_schema({}),
-            func="async_clear_inventory",
+            lambda call: _async_clear_inventory(hass, call),
+            schema=vol.Schema(
+                {
+                    vol.Required("entity_id"): cv.entity_id,
+                }
+            ),
         )
         domain_data[_DATA_SERVICES_REGISTERED] = True
 
     return True
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: FreezerManagementConfigEntry,
-) -> bool:
-    """Set up Freezer Management from a config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = FreezerInventoryStore(hass, entry.entry_id)
     await store.async_load()
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    domain_data.setdefault(DATA_ENTRIES, {})[entry.entry_id] = store
+    _get_domain_data(hass)[DATA_ENTRIES][entry.entry_id] = store
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(
-    hass: HomeAssistant,
-    entry: FreezerManagementConfigEntry,
-) -> bool:
-    """Unload a config entry."""
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
-        domain_data = hass.data.get(DOMAIN, {})
-        entries = domain_data.get(DATA_ENTRIES, {})
-        entries.pop(entry.entry_id, None)
+        _get_domain_data(hass).get(DATA_ENTRIES, {}).pop(entry.entry_id, None)
     return unloaded

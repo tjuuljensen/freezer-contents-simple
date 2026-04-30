@@ -4,19 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Callable, NotRequired, TypedDict
+from typing import Any, Callable, TypedDict
 from uuid import uuid4
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
 from .const import (
-    ATTR_COMPARTMENT,
-    ATTR_CONTENTS,
-    ATTR_DATE,
-    ATTR_ISO_DATE,
+    ATTR_FREEZER_COMPARTMENT,
+    ATTR_ITEM,
     ATTR_ITEM_ID,
     ATTR_ITEMS,
+    ATTR_PACKAGING_TYPE,
+    ATTR_STORAGE_DATE,
+    ATTR_STORAGE_ISO_DATE,
     ATTR_UPDATED_AT,
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
@@ -26,23 +27,12 @@ from .const import (
 class FreezerItem(TypedDict):
     """Stored freezer item."""
 
-    id: str
-    contents: str
-    compartment: str
-    date: str
-    iso_date: str
-
-
-class LegacyFreezerItem(TypedDict):
-    """Legacy item shape from older card versions."""
-
-    potContents: NotRequired[str]
-    potCompartment: NotRequired[str]
-    contents: NotRequired[str]
-    compartment: NotRequired[str]
-    date: NotRequired[str]
-    iso_date: NotRequired[str]
-    id: NotRequired[str]
+    itemId: str
+    item: str
+    packagingType: str
+    freezerCompartment: str
+    storageDate: str
+    storageIsoDate: str
 
 
 class FreezerStoreData(TypedDict):
@@ -72,7 +62,6 @@ class FreezerInventoryStore:
     loaded: bool = False
 
     def __post_init__(self) -> None:
-        """Initialize the storage helper."""
         self._store = Store[FreezerStoreData](
             self.hass,
             STORAGE_VERSION,
@@ -81,24 +70,20 @@ class FreezerInventoryStore:
 
     @property
     def items(self) -> list[FreezerItem]:
-        """Return stored items."""
         return self._data[ATTR_ITEMS]
 
     @property
     def updated_at(self) -> str:
-        """Return last update timestamp."""
         return self._data[ATTR_UPDATED_AT]
 
     async def async_load(self) -> None:
-        """Load persisted state."""
         raw = await self._store.async_load()
         self._data = self._normalize_store(raw)
         self.loaded = True
         self._notify()
 
     @callback
-    def async_add_listener(self, listener: Listener) -> Callable[[], None]:
-        """Subscribe to store updates."""
+    def async_add_listener(self, listener: Listener):
         self._listeners.append(listener)
 
         @callback
@@ -111,27 +96,27 @@ class FreezerInventoryStore:
     async def async_add_item(
         self,
         *,
-        contents: str,
-        compartment: str = "",
-        date: str | None = None,
+        item: str,
+        packaging_type: str = "",
+        freezer_compartment: str = "",
+        storage_date: str | None = None,
     ) -> FreezerItem:
-        """Add an item to storage."""
         now = datetime.now(UTC)
-        item: FreezerItem = {
+        normalized_item: FreezerItem = {
             ATTR_ITEM_ID: uuid4().hex,
-            ATTR_CONTENTS: contents.strip(),
-            ATTR_COMPARTMENT: compartment.strip(),
-            ATTR_DATE: date.strip() if date else now.date().isoformat(),
-            ATTR_ISO_DATE: now.isoformat(),
+            ATTR_ITEM: item.strip(),
+            ATTR_PACKAGING_TYPE: packaging_type.strip(),
+            ATTR_FREEZER_COMPARTMENT: freezer_compartment.strip(),
+            ATTR_STORAGE_DATE: storage_date.strip() if storage_date else now.date().isoformat(),
+            ATTR_STORAGE_ISO_DATE: now.isoformat(),
         }
-        self._data[ATTR_ITEMS].append(item)
+        self._data[ATTR_ITEMS].append(normalized_item)
         self._touch_updated_at(now)
         await self._async_save()
         self._notify()
-        return item
+        return normalized_item
 
     async def async_remove_item(self, item_id: str) -> bool:
-        """Remove an item from storage."""
         original_count = len(self._data[ATTR_ITEMS])
         self._data[ATTR_ITEMS] = [
             item for item in self._data[ATTR_ITEMS] if item[ATTR_ITEM_ID] != item_id
@@ -144,25 +129,21 @@ class FreezerInventoryStore:
         return removed
 
     async def async_clear(self) -> None:
-        """Clear all items."""
         self._data[ATTR_ITEMS] = []
         self._touch_updated_at()
         await self._async_save()
         self._notify()
 
     async def _async_save(self) -> None:
-        """Persist the current store payload."""
         await self._store.async_save(self._data)
 
     @callback
     def _notify(self) -> None:
-        """Notify listeners of updates."""
         for listener in list(self._listeners):
             listener()
 
     @staticmethod
     def _normalize_store(raw: FreezerStoreData | dict[str, Any] | None) -> FreezerStoreData:
-        """Normalize raw persisted data."""
         items: list[FreezerItem] = []
         updated_at = ""
 
@@ -182,42 +163,62 @@ class FreezerInventoryStore:
 
     @staticmethod
     def _normalize_item(raw_item: Any) -> FreezerItem | None:
-        """Normalize one item from storage."""
         if not isinstance(raw_item, dict):
             return None
 
-        item = raw_item
-
-        contents = str(
-            item.get(ATTR_CONTENTS)
-            or item.get("potContents")
+        item = str(
+            raw_item.get(ATTR_ITEM)
+            or raw_item.get("contents")
+            or raw_item.get("potContents")
             or ""
         ).strip()
-        compartment = str(
-            item.get(ATTR_COMPARTMENT)
-            or item.get("potCompartment")
+        packaging_type = str(
+            raw_item.get(ATTR_PACKAGING_TYPE)
+            or raw_item.get("type")
+            or raw_item.get("number")
+            or raw_item.get("potNumber")
             or ""
         ).strip()
-        date = str(item.get(ATTR_DATE) or "").strip()
-        iso_date = str(item.get(ATTR_ISO_DATE) or "").strip()
-        item_id = str(item.get(ATTR_ITEM_ID) or "").strip() or uuid4().hex
+        freezer_compartment = str(
+            raw_item.get(ATTR_FREEZER_COMPARTMENT)
+            or raw_item.get("compartment")
+            or raw_item.get("potCompartment")
+            or ""
+        ).strip()
+        storage_date = str(
+            raw_item.get(ATTR_STORAGE_DATE)
+            or raw_item.get("date")
+            or raw_item.get("potDate")
+            or ""
+        ).strip()
+        storage_iso_date = str(
+            raw_item.get(ATTR_STORAGE_ISO_DATE)
+            or raw_item.get("iso_date")
+            or raw_item.get("potIsoDate")
+            or ""
+        ).strip()
+        item_id = str(
+            raw_item.get(ATTR_ITEM_ID)
+            or raw_item.get("id")
+            or ""
+        ).strip() or uuid4().hex
 
-        if not contents:
+        if not item:
             return None
 
-        if not date and iso_date:
-            date = iso_date[:10]
-        if not iso_date:
-            iso_date = datetime.now(UTC).isoformat()
+        if not storage_date and storage_iso_date:
+            storage_date = storage_iso_date[:10]
+        if not storage_iso_date:
+            storage_iso_date = datetime.now(UTC).isoformat()
 
         return {
             ATTR_ITEM_ID: item_id,
-            ATTR_CONTENTS: contents,
-            ATTR_COMPARTMENT: compartment,
-            ATTR_DATE: date,
-            ATTR_ISO_DATE: iso_date,
+            ATTR_ITEM: item,
+            ATTR_PACKAGING_TYPE: packaging_type,
+            ATTR_FREEZER_COMPARTMENT: freezer_compartment,
+            ATTR_STORAGE_DATE: storage_date,
+            ATTR_STORAGE_ISO_DATE: storage_iso_date,
         }
 
     def _touch_updated_at(self, now: datetime | None = None) -> None:
-        """Update the store timestamp."""
         self._data[ATTR_UPDATED_AT] = (now or datetime.now(UTC)).isoformat()
