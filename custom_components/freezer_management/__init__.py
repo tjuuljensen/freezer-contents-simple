@@ -55,8 +55,9 @@ def _get_entry_store(hass: HomeAssistant, entity_id: str) -> FreezerInventorySto
     return _get_domain_data(hass).get(DATA_ENTRIES, {}).get(entry.config_entry_id)
 
 
-async def _async_add_item(hass: HomeAssistant, call: ServiceCall) -> None:
+async def _async_add_item(call: ServiceCall) -> None:
     """Add item service."""
+    hass: HomeAssistant = call.hass
     store = _get_entry_store(hass, call.data["entity_id"])
     if store is None:
         raise vol.Invalid("Unknown freezer inventory entity.")
@@ -70,8 +71,9 @@ async def _async_add_item(hass: HomeAssistant, call: ServiceCall) -> None:
     )
 
 
-async def _async_remove_item(hass: HomeAssistant, call: ServiceCall) -> None:
+async def _async_remove_item(call: ServiceCall) -> None:
     """Remove item service."""
+    hass: HomeAssistant = call.hass
     store = _get_entry_store(hass, call.data["entity_id"])
     if store is None:
         raise vol.Invalid("Unknown freezer inventory entity.")
@@ -81,8 +83,9 @@ async def _async_remove_item(hass: HomeAssistant, call: ServiceCall) -> None:
         raise vol.Invalid("Unknown itemId for freezer inventory entity.")
 
 
-async def _async_clear_inventory(hass: HomeAssistant, call: ServiceCall) -> None:
+async def _async_clear_inventory(call: ServiceCall) -> None:
     """Clear inventory service."""
+    hass: HomeAssistant = call.hass
     store = _get_entry_store(hass, call.data["entity_id"])
     if store is None:
         raise vol.Invalid("Unknown freezer inventory entity.")
@@ -115,7 +118,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     vol.Optional(ATTR_FREEZER_COMPARTMENT, default=""): cv.string,
                     vol.Optional(ATTR_ADDED_DATE): cv.string,
                     vol.Optional(ATTR_EXPIRY_DATE): cv.string,
-                }
+                },
+                extra=vol.PREVENT_EXTRA,
             ),
         )
         hass.services.async_register(
@@ -126,7 +130,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 {
                     vol.Required("entity_id"): cv.entity_id,
                     vol.Required(ATTR_ITEM_ID): cv.string,
-                }
+                },
+                extra=vol.PREVENT_EXTRA,
             ),
         )
         hass.services.async_register(
@@ -136,7 +141,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             schema=vol.Schema(
                 {
                     vol.Required("entity_id"): cv.entity_id,
-                }
+                },
+                extra=vol.PREVENT_EXTRA,
             ),
         )
         domain_data[_DATA_SERVICES_REGISTERED] = True

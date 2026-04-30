@@ -215,7 +215,7 @@ class FreezerManagementCard extends HTMLElement {
         .fm-form {
           display: grid;
           gap: 12px;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr) minmax(110px, 0.8fr) minmax(140px, 1fr);
           align-items: end;
         }
 
@@ -312,6 +312,12 @@ class FreezerManagementCard extends HTMLElement {
           background: var(--card-background-color);
           color: var(--primary-text-color);
           font: inherit;
+        }
+
+        .fm-help {
+          font-size: 0.8rem;
+          color: var(--secondary-text-color);
+          margin-top: -4px;
         }
 
         .fm-warning {
@@ -453,11 +459,27 @@ class FreezerManagementCard extends HTMLElement {
             <span>${this._escapeHtml(this._label("field-expiry", "Expiry"))}</span>
             <input
               id="fm-expiry"
-              type="date"
+              type="text"
+              list="expiry-presets"
               value="${this._escapeAttr(this.form.expiryDate || "")}"
+              placeholder="90d, 6m, 1y, meat_6m or 2026-12-31"
               ${disabled ? "disabled" : ""}
             />
+            <datalist id="expiry-presets">
+              <option value="90d"></option>
+              <option value="6m"></option>
+              <option value="1y"></option>
+              <option value="meat_6m"></option>
+              <option value="vegetables_12m"></option>
+              <option value="fish_3m"></option>
+              <option value="bread_3m"></option>
+              <option value="prepared_3m"></option>
+            </datalist>
           </label>
+        </div>
+
+        <div class="fm-help">
+          Expiry accepts codes like 90d, 6m, 1y, presets like meat_6m, or a date like 2026-12-31.
         </div>
 
         <div class="fm-actions">
@@ -874,10 +896,11 @@ class FreezerManagementCard extends HTMLElement {
     const diffDays = Math.round(diffMs / 86400000);
 
     if (Math.abs(diffDays) < 1) {
-      return this._formatConfiguredDate(
-        date.toISOString().slice(0, 10),
-        date.toISOString()
-      );
+      return new Intl.DateTimeFormat(this._getLanguage(), {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }).format(date);
     }
 
     const rtf = new Intl.RelativeTimeFormat(this._getLanguage(), {

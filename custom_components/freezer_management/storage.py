@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, TypedDict
 from uuid import uuid4
 
@@ -66,7 +66,6 @@ class FreezerInventoryStore:
     loaded: bool = False
 
     def __post_init__(self) -> None:
-        """Initialize storage."""
         self._store = Store[FreezerStoreData](
             self.hass,
             STORAGE_VERSION,
@@ -75,16 +74,13 @@ class FreezerInventoryStore:
 
     @property
     def items(self) -> list[FreezerItem]:
-        """Return items."""
         return self._data[ATTR_ITEMS]
 
     @property
     def updated_at(self) -> str:
-        """Return last update timestamp."""
         return self._data[ATTR_UPDATED_AT]
 
     async def async_load(self) -> None:
-        """Load persisted state."""
         raw = await self._store.async_load()
         self._data = self._normalize_store(raw)
         self.loaded = True
@@ -92,7 +88,6 @@ class FreezerInventoryStore:
 
     @callback
     def async_add_listener(self, listener: Listener):
-        """Subscribe to updates."""
         self._listeners.append(listener)
 
         @callback
@@ -111,8 +106,9 @@ class FreezerInventoryStore:
         added_date: str | None = None,
         expiry_date: str | None = None,
     ) -> FreezerItem:
-        """Add an item."""
         now = datetime.now(UTC)
+        normalized_expiry_date, normalized_expiry_iso = _normalize_expiry_input(expiry_date or "")
+
         normalized_item: FreezerItem = {
             ATTR_ITEM_ID: uuid4().hex,
             ATTR_ITEM: item.strip(),
@@ -120,14 +116,9 @@ class FreezerInventoryStore:
             ATTR_FREEZER_COMPARTMENT: freezer_compartment.strip(),
             ATTR_ADDED_DATE: added_date.strip() if added_date else now.date().isoformat(),
             ATTR_ADDED_ISO_DATE: now.isoformat(),
-            ATTR_EXPIRY_DATE: expiry_date.strip() if expiry_date else "",
-            ATTR_EXPIRY_ISO_DATE: "",
+            ATTR_EXPIRY_DATE: normalized_expiry_date,
+            ATTR_EXPIRY_ISO_DATE: normalized_expiry_iso,
         }
-
-        if normalized_item[ATTR_EXPIRY_DATE]:
-            normalized_item[ATTR_EXPIRY_ISO_DATE] = _date_to_iso(
-                normalized_item[ATTR_EXPIRY_DATE]
-            )
 
         self._data[ATTR_ITEMS].append(normalized_item)
         self._touch_updated_at(now)
@@ -136,7 +127,6 @@ class FreezerInventoryStore:
         return normalized_item
 
     async def async_remove_item(self, item_id: str) -> bool:
-        """Remove one item."""
         original_count = len(self._data[ATTR_ITEMS])
         self._data[ATTR_ITEMS] = [
             item for item in self._data[ATTR_ITEMS] if item[ATTR_ITEM_ID] != item_id
@@ -149,25 +139,21 @@ class FreezerInventoryStore:
         return removed
 
     async def async_clear(self) -> None:
-        """Clear all items."""
         self._data[ATTR_ITEMS] = []
         self._touch_updated_at()
         await self._async_save()
         self._notify()
 
     async def _async_save(self) -> None:
-        """Persist state."""
         await self._store.async_save(self._data)
 
     @callback
     def _notify(self) -> None:
-        """Notify listeners."""
         for listener in list(self._listeners):
             listener()
 
     @staticmethod
     def _normalize_store(raw: FreezerStoreData | dict[str, Any] | None) -> FreezerStoreData:
-        """Normalize store payload."""
         items: list[FreezerItem] = []
         updated_at = ""
 
@@ -187,7 +173,6 @@ class FreezerInventoryStore:
 
     @staticmethod
     def _normalize_item(raw_item: Any) -> FreezerItem | None:
-        """Normalize one item from current or old schemas."""
         if not isinstance(raw_item, dict):
             return None
 
@@ -224,14 +209,8 @@ class FreezerInventoryStore:
             or raw_item.get("potIsoDate")
             or ""
         ).strip()
-        expiry_date = str(
-            raw_item.get(ATTR_EXPIRY_DATE)
-            or ""
-        ).strip()
-        expiry_iso_date = str(
-            raw_item.get(ATTR_EXPIRY_ISO_DATE)
-            or ""
-        ).strip()
+        expiry_date = str(raw_item.get(ATTR_EXPIRY_DATE) or "").strip()
+        expiry_iso_date = str(raw_item.get(ATTR_EXPIRY_ISO_DATE) or "").strip()
         item_id = str(
             raw_item.get(ATTR_ITEM_ID)
             or raw_item.get("id")
@@ -247,7 +226,7 @@ class FreezerInventoryStore:
             added_iso_date = datetime.now(UTC).isoformat()
 
         if expiry_date and not expiry_iso_date:
-            expiry_iso_date = _date_to_iso(expiry_date)
+            _, expiry_iso_date = _normalize_expiry_input(expiry_date)
         if expiry_iso_date and not expiry_date:
             expiry_date = _iso_to_date(expiry_iso_date)
 
@@ -263,21 +242,51 @@ class FreezerInventoryStore:
         }
 
     def _touch_updated_at(self, now: datetime | None = None) -> None:
-        """Update timestamp."""
         self._data[ATTR_UPDATED_AT] = (now or datetime.now(UTC)).isoformat()
 
 
 def _iso_to_date(value: str) -> str:
-    """Convert ISO datetime to YYYY-MM-DD if possible."""
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).date().isoformat()
     except ValueError:
         return value[:10]
 
 
-def _date_to_iso(value: str) -> str:
-    """Convert YYYY-MM-DD to ISO datetime."""
+def _normalize_expiry_input(value: str) -> tuple[str, str]:
+    raw = value.strip().lower()
+    if not raw:
+        return "", ""
+
+    now = datetime.now(UTC)
+
+    presets = {
+        "meat_6m": timedelta(days=182),
+        "vegetables_12m": timedelta(days=365),
+        "fish_3m": timedelta(days=90),
+        "bread_3m": timedelta(days=90),
+        "prepared_3m": timedelta(days=90),
+    }
+
+    if raw in presets:
+        target = now + presets[raw]
+        return target.date().isoformat(), target.isoformat()
+
+    if raw.endswith("d") and raw[:-1].isdigit():
+        target = now + timedelta(days=int(raw[:-1]))
+        return target.date().isoformat(), target.isoformat()
+
+    if raw.endswith("m") and raw[:-1].isdigit():
+        target = now + timedelta(days=int(raw[:-1]) * 30)
+        return target.date().isoformat(), target.isoformat()
+
+    if raw.endswith("y") and raw[:-1].isdigit():
+        target = now + timedelta(days=int(raw[:-1]) * 365)
+        return target.date().isoformat(), target.isoformat()
+
     try:
-        return datetime.fromisoformat(value).replace(tzinfo=UTC).isoformat()
+        target = datetime.fromisoformat(raw)
+        if target.tzinfo is None:
+            target = target.replace(tzinfo=UTC)
+        return target.date().isoformat(), target.isoformat()
     except ValueError:
-        return ""
+        return raw, ""
